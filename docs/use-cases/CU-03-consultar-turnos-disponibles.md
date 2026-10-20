@@ -55,8 +55,8 @@ sus turnos para una fecha o una semana.
   habilitado. No se ofrecen turnos.
 - **5a. El profesional no tiene horarios habilitados en el rango:** lista vacía. Es una respuesta
   válida y no hace falta llamar a la cátedra.
-- **6a. La cátedra no responde o responde 5xx:** hasta 3 reintentos con backoff de 1 s, 2 s y 4 s
-  (DPT-08). Si se agotan, `503`.
+- **6a. La cátedra no responde o responde 5xx:** `503`, sin reintentos porque el usuario está
+  esperando (DPT-08). La app puede volver a consultar.
 - **6b. La cátedra responde `400 INVALID_DATE_RANGE`:** no debería pasar, porque el paso 2 ya
   validó el rango. Se registra en el log y se responde `500`.
 - **6c. La cátedra responde `401` o `403`** (JWT técnico vencido o cuenta técnica mal
@@ -81,8 +81,8 @@ sus turnos para una fecha o una semana.
 - **DPT-11 (catálogo no disponible):** sin agenda vigente no se calcula disponibilidad: `503`.
 - **DPT-13 (llamadas al catálogo):** timeouts de 2 s de conexión y 5 s de lectura, sin
   reintentos.
-- **DPT-08 (llamadas a la cátedra):** timeouts de 2 s y 5 s, hasta 3 reintentos con backoff de
-  1 s, 2 s y 4 s. Este GET es seguro de repetir.
+- **DPT-08 (llamadas a la cátedra):** timeouts de 2 s y 5 s. Las llamadas que el usuario espera
+  no se reintentan: si fallan, se responde enseguida y la app puede volver a consultar.
 - **DPT-16 (autenticación con el catálogo):** token técnico de servicio con `ROLE_SERVICE`,
   `aud=catalogo-service` e `iss=turnos-service`, y el login del usuario en `X-User-Login` solo para
   trazabilidad. El JWT del usuario no se reenvía.

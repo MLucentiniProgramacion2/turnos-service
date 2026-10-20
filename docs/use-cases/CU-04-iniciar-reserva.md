@@ -157,8 +157,9 @@ En la pantalla de resumen de la app, el usuario toca "Reservar" sobre un turno e
   `SLOT_ALREADY_HELD` contra nuestro propio hold.
 - **DPT-07 (timeout al confirmar):** se responde `202` con el proceso en `HOLD_CREATED` y lo
   reconcilia CU-11.
-- **DPT-08 (cátedra):** timeouts de 2 s y 5 s. El POST del hold nunca se reintenta; el confirm solo
-  se reintenta después de reconciliar (CU-11).
+- **DPT-08 (cátedra):** timeouts de 2 s y 5 s. Como el usuario está esperando, ninguna llamada de
+  este caso se reintenta. El POST del hold nunca se reintenta; el confirm solo se reintenta en
+  segundo plano, después de reconciliar (CU-11).
 - **DPT-10 (horizonte):** CU-04 también valida el horizonte de 60 días, para que no se pueda
   saltear CU-03 llamando directo a la API.
 - **DPT-11, DPT-13 (catálogo):** sin agenda vigente no se inicia la reserva; sin reintentos hacia
