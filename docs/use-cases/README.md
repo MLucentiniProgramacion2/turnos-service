@@ -192,11 +192,7 @@ stateDiagram-v2
 - Contrato concreto con el catálogo para su CU-07: rutas, DTOs y códigos de error.
 - Cómo se comparte la clave de firma del JWT con el catálogo, y cómo se obtiene el `id` del
   usuario a partir del JWT (DPT-21): issue de la base JHipster.
-- Motor de base y herramienta de migraciones: se registra en el ADR del issue de infraestructura
-  de turnos (PostgreSQL y Liquibase, como en el catálogo). DPT-17 usa un índice único parcial, que
-  existe en PostgreSQL.
-
-## Pendiente en el servicio de catálogo
-
-- DP-06 y CU-07 del catálogo dicen "`aud=catalogo-service` **o** un `iss` propio"; por DPT-16
-  tienen que exigir **los dos**.
+- Motor de base y herramienta de migraciones: resuelto en el
+  [ADR 0001 (PostgreSQL)](../adr/0001-postgresql.md) y el
+  [ADR 0002 (Liquibase)](../adr/0002-liquibase.md). El índice único parcial de DPT-17 es uno de
+  los motivos de PostgreSQL.
