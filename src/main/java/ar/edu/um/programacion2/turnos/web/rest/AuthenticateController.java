@@ -88,15 +88,20 @@ public class AuthenticateController {
             validity = now.plus(this.tokenValidityInSeconds, ChronoUnit.SECONDS);
         }
 
+        // DPT-21: sin el id interno el token no sirve para identificar al dueño, así que no se emite.
+        if (!(authentication.getPrincipal() instanceof UserWithId user)) {
+            throw new IllegalStateException("No se puede emitir el JWT: el usuario autenticado no tiene id");
+        }
+
+        // DPT-16: el token de usuario no lleva aud, iss ni ROLE_SERVICE, que son del token técnico
+        // que turnos usa con el catálogo; así el catálogo distingue uno de otro.
         // @formatter:off
         JwtClaimsSet.Builder builder = JwtClaimsSet.builder()
             .issuedAt(now)
             .expiresAt(validity)
             .subject(authentication.getName())
-            .claim(AUTHORITIES_CLAIM, authorities);
-        if (authentication.getPrincipal() instanceof UserWithId user) {
-            builder.claim(USER_ID_CLAIM, user.getId());
-        }
+            .claim(AUTHORITIES_CLAIM, authorities)
+            .claim(USER_ID_CLAIM, user.getId());
 
         JwsHeader jwsHeader = JwsHeader.with(JWT_ALGORITHM).build();
         return this.jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, builder.build())).getTokenValue();

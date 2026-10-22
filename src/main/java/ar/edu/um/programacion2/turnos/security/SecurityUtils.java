@@ -22,6 +22,10 @@ public final class SecurityUtils {
 
     public static final String AUTHORITIES_CLAIM = "auth";
 
+    /**
+     * Claim con el {@code id} interno del usuario (DPT-21). Es el que identifica al dueño de
+     * procesos y reservas: el login lo puede cambiar un admin, el id no.
+     */
     public static final String USER_ID_CLAIM = "userId";
 
     private SecurityUtils() {}
@@ -70,7 +74,10 @@ public final class SecurityUtils {
     }
 
     /**
-     * Get the Id of the current user.
+     * Get the Id of the current user, from the {@value #USER_ID_CLAIM} claim of the JWT (DPT-21).
+     * <p>
+     * El claim es un número JSON; se acepta cualquier {@link Number} para no depender del tipo
+     * con que lo entregue el parser. Si falta o no es numérico, devuelve vacío.
      *
      * @return the Id of the current user.
      */
@@ -78,8 +85,9 @@ public final class SecurityUtils {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         return Optional.ofNullable(securityContext.getAuthentication())
             .filter(authentication -> authentication.getPrincipal() instanceof ClaimAccessor)
-            .map(authentication -> (ClaimAccessor) authentication.getPrincipal())
-            .map(principal -> principal.getClaim(USER_ID_CLAIM));
+            .map(authentication -> ((ClaimAccessor) authentication.getPrincipal()).getClaims().get(USER_ID_CLAIM))
+            .filter(Number.class::isInstance)
+            .map(userId -> ((Number) userId).longValue());
     }
 
     /**
