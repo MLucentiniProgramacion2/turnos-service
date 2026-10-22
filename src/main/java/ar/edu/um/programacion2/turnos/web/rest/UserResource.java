@@ -4,7 +4,6 @@ import ar.edu.um.programacion2.turnos.config.Constants;
 import ar.edu.um.programacion2.turnos.domain.User;
 import ar.edu.um.programacion2.turnos.repository.UserRepository;
 import ar.edu.um.programacion2.turnos.security.AuthoritiesConstants;
-import ar.edu.um.programacion2.turnos.service.MailService;
 import ar.edu.um.programacion2.turnos.service.UserService;
 import ar.edu.um.programacion2.turnos.service.dto.AdminUserDTO;
 import ar.edu.um.programacion2.turnos.web.rest.errors.BadRequestAlertException;
@@ -82,20 +81,16 @@ public class UserResource {
 
     private final UserRepository userRepository;
 
-    private final MailService mailService;
-
-    public UserResource(UserService userService, UserRepository userRepository, MailService mailService) {
+    public UserResource(UserService userService, UserRepository userRepository) {
         this.userService = userService;
         this.userRepository = userRepository;
-        this.mailService = mailService;
     }
 
     /**
      * {@code POST  /admin/users}  : Creates a new user.
      * <p>
-     * Creates a new user if the login and email are not already used, and sends a
-     * mail with an activation link.
-     * The user needs to be activated on creation.
+     * Creates a new user if the login and email are not already used.
+     * No se envía correo: el servicio no tiene envío de mails (ADR 0003).
      *
      * @param userDTO the user to create.
      * @return the {@link ResponseEntity} with status {@code 201 (Created)} and with body the new user, or with status {@code 400 (Bad Request)} if the login or email is already in use.
@@ -116,7 +111,6 @@ public class UserResource {
             throw new EmailAlreadyUsedException();
         } else {
             User newUser = userService.createUser(userDTO);
-            mailService.sendCreationEmail(newUser);
             return ResponseEntity.created(new URI("/api/admin/users/" + newUser.getLogin()))
                 .headers(
                     HeaderUtil.createAlert(applicationName, "A user is created with identifier " + newUser.getLogin(), newUser.getLogin())
