@@ -75,8 +75,8 @@ public class AccountResource {
         if (isPasswordLengthInvalid(managedUserVM.getPassword())) {
             throw new InvalidPasswordException();
         }
-        User user = userService.registerUser(managedUserVM, managedUserVM.getPassword());
-        mailService.sendActivationEmail(user);
+        // Queda activo al instante: no hay correo de activación (enunciado §3.2, CU-01).
+        userService.registerUser(managedUserVM, managedUserVM.getPassword());
     }
 
     /**

@@ -80,17 +80,13 @@ public class UserService {
     }
 
     public User registerUser(AdminUserDTO userDTO, String password) {
+        // Sin activación por correo, un usuario desactivado solo puede serlo por un admin:
+        // su login y su email siguen ocupados y nunca se borran para registrar otro.
         userRepository.findOneByLogin(userDTO.getLogin().toLowerCase()).ifPresent(existingUser -> {
-            boolean removed = removeNonActivatedUser(existingUser);
-            if (!removed) {
-                throw new UsernameAlreadyUsedException();
-            }
+            throw new UsernameAlreadyUsedException();
         });
         userRepository.findOneByEmailIgnoreCase(userDTO.getEmail()).ifPresent(existingUser -> {
-            boolean removed = removeNonActivatedUser(existingUser);
-            if (!removed) {
-                throw new EmailAlreadyUsedException();
-            }
+            throw new EmailAlreadyUsedException();
         });
         User newUser = new User();
         String encryptedPassword = passwordEncoder.encode(password);
@@ -104,25 +100,15 @@ public class UserService {
         }
         newUser.setImageUrl(userDTO.getImageUrl());
         newUser.setLangKey(userDTO.getLangKey());
-        // new user is not active
-        newUser.setActivated(false);
-        // new user gets registration key
-        newUser.setActivationKey(RandomUtil.generateActivationKey());
+        // Activo al instante, sin verificación por correo (enunciado §3.2, CU-01).
+        // id, activated, authorities y auditoría los fija el backend, nunca el pedido.
+        newUser.setActivated(true);
         Set<Authority> authorities = new HashSet<>();
         authorityRepository.findById(AuthoritiesConstants.USER).ifPresent(authorities::add);
         newUser.setAuthorities(authorities);
         userRepository.save(newUser);
         LOG.debug("Created Information for User: {}", newUser);
         return newUser;
-    }
-
-    private boolean removeNonActivatedUser(User existingUser) {
-        if (existingUser.isActivated()) {
-            return false;
-        }
-        userRepository.delete(existingUser);
-        userRepository.flush();
-        return true;
     }
 
     public User createUser(AdminUserDTO userDTO) {

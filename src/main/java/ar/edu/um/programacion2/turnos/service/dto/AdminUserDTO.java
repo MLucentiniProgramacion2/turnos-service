@@ -20,15 +20,19 @@ public class AdminUserDTO implements Serializable {
 
     private Long id;
 
+    // DPT-20: de 3 a 50 caracteres, como el login de la cuenta técnica (contrato §5.1).
     @NotBlank
     @Pattern(regexp = Constants.LOGIN_REGEX)
-    @Size(min = 1, max = 50)
+    @Size(min = 3, max = 50)
     private String login;
 
-    @Size(max = 50)
+    // DPT-02: obligatorios, de 2 a 50, para que la cátedra no rechace los nombres del paciente.
+    @NotBlank
+    @Size(min = 2, max = 50)
     private String firstName;
 
-    @Size(max = 50)
+    @NotBlank
+    @Size(min = 2, max = 50)
     private String lastName;
 
     @Email
