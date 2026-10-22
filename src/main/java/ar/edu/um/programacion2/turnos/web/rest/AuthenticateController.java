@@ -78,7 +78,14 @@ public class AuthenticateController {
     }
 
     public String createToken(Authentication authentication, boolean rememberMe) {
-        String authorities = authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.joining(" "));
+        // DPT-21: sin el id interno el token no sirve para identificar al dueño, así que no se emite.
+        if (!(authentication.getPrincipal() instanceof UserWithId user)) {
+            throw new IllegalStateException("No se puede emitir el JWT: el usuario autenticado no tiene id");
+        }
+
+        // Solo los roles del usuario (jhi_user_authority). Las autoridades que agrega Spring Security
+        // al autenticar, como FACTOR_PASSWORD, están en authentication y no en el usuario: no viajan.
+        String authorities = user.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.joining(" "));
 
         var now = Instant.now();
         Instant validity;
@@ -86,11 +93,6 @@ public class AuthenticateController {
             validity = now.plus(this.tokenValidityInSecondsForRememberMe, ChronoUnit.SECONDS);
         } else {
             validity = now.plus(this.tokenValidityInSeconds, ChronoUnit.SECONDS);
-        }
-
-        // DPT-21: sin el id interno el token no sirve para identificar al dueño, así que no se emite.
-        if (!(authentication.getPrincipal() instanceof UserWithId user)) {
-            throw new IllegalStateException("No se puede emitir el JWT: el usuario autenticado no tiene id");
         }
 
         // DPT-16: el token de usuario no lleva aud, iss ni ROLE_SERVICE, que son del token técnico

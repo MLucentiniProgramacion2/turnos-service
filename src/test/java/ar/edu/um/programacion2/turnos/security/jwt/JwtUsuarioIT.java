@@ -66,11 +66,8 @@ class JwtUsuarioIT {
         Jwt token = jwtDecoder.decode(login());
 
         assertThat(token.getSubject()).isEqualTo(LOGIN);
-        // Los roles del token son los del usuario. Spring Security 7 suma además FACTOR_PASSWORD
-        // (el factor con que se autenticó), que no es un rol y no da permisos.
-        assertThat(token.getClaimAsString(AUTHORITIES_CLAIM).split(" "))
-            .filteredOn(autoridad -> autoridad.startsWith("ROLE_"))
-            .containsExactly(AuthoritiesConstants.USER);
+        // Solo los roles del usuario: sin FACTOR_PASSWORD, que Spring Security 7 suma al autenticar.
+        assertThat(token.getClaimAsString(AUTHORITIES_CLAIM)).isEqualTo(AuthoritiesConstants.USER);
         assertThat(token.getClaims().get(USER_ID_CLAIM)).isInstanceOf(Number.class);
         assertThat(((Number) token.getClaims().get(USER_ID_CLAIM)).longValue()).isEqualTo(usuario.getId());
         assertThat(token.getClaims()).doesNotContainKeys(JwtClaimNames.AUD, JwtClaimNames.ISS);
