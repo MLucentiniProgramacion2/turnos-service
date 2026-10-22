@@ -73,7 +73,8 @@ jhipster:
   security:
     authentication:
       jwt:
-        # This token must be encoded using Base64 (you can type `echo 'secret-key'|base64` on your command line)
+        # Solo para tests: clave falsa, pública a propósito (es la jwtSecretKey de .yo-rc.json).
+        # Nunca usarla en dev ni en prod; ahí la clave sale de JWT_BASE64_SECRET.
         base64-secret: dHVybm9zLXNlcnZpY2U6IGNsYXZlIEpXVCBTT0xPIFBBUkEgVEVTVFMuIE5vIHVzYXIgZW4gZGV2IG5pIGVuIHByb2QuIFB1YmxpY2EgYSBwcm9wb3NpdG8u
         # Token is valid 24 hours
         token-validity-in-seconds: 86400

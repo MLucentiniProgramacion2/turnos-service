@@ -32,7 +32,10 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5432/turnosService
+    # Base turnos-db del docker-compose.yml de la raíz; los valores salen de .env.
+    url: jdbc:postgresql://${TURNOS_DB_HOST:localhost}:${TURNOS_DB_PORT}/${TURNOS_DB_NAME}
+    username: ${TURNOS_DB_USER}
+    password: ${TURNOS_DB_PASSWORD}
     hikari:
       poolName: Hikari
       auto-commit: false
@@ -73,6 +76,9 @@ jhipster:
   security:
     authentication:
       jwt:
+        # Clave HS512 compartida con catalogo-service (ADR 0003). Sin valor por
+        # defecto: si falta JWT_BASE64_SECRET, la aplicación no arranca.
+        base64-secret: ${JWT_BASE64_SECRET}
         # Token is valid 24 hours
         token-validity-in-seconds: 86400
         token-validity-in-seconds-for-remember-me: 2592000
