@@ -77,7 +77,8 @@ class RegistroUsuarioIT {
             Arguments.of("firstName de 1 carácter", (Consumer<ManagedUserVM>) u -> u.setFirstName("A")),
             Arguments.of("lastName faltante", (Consumer<ManagedUserVM>) u -> u.setLastName(null)),
             Arguments.of("lastName de 1 carácter", (Consumer<ManagedUserVM>) u -> u.setLastName("B")),
-            Arguments.of("login de 2 caracteres", (Consumer<ManagedUserVM>) u -> u.setLogin("ab"))
+            Arguments.of("login de 2 caracteres", (Consumer<ManagedUserVM>) u -> u.setLogin("ab")),
+            Arguments.of("email faltante", (Consumer<ManagedUserVM>) u -> u.setEmail(null))
         );
     }
 
@@ -94,6 +95,22 @@ class RegistroUsuarioIT {
             .andExpect(status().isBadRequest());
 
         assertThat(userRepository.count()).isEqualTo(usuariosAntes);
+    }
+
+    @Test
+    @Transactional
+    void registroConEmailDe254CaracteresDa201() throws Exception {
+        // 254 = máximo de CU-01. Parte local de 64 y etiquetas de dominio de hasta 63 (límites de @Email).
+        String email = "a".repeat(64) + "@" + "b".repeat(63) + "." + "c".repeat(63) + "." + "d".repeat(57) + ".com";
+        assertThat(email).hasSize(254);
+        ManagedUserVM pedido = usuarioValido();
+        pedido.setEmail(email);
+
+        mockMvc
+            .perform(post("/api/register").contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsBytes(pedido)))
+            .andExpect(status().isCreated());
+
+        assertThat(userRepository.findOneByLogin(LOGIN).orElseThrow().getEmail()).isEqualTo(email);
     }
 
     @Test

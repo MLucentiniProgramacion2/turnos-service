@@ -35,6 +35,8 @@ public class AdminUserDTO implements Serializable {
     @Size(min = 2, max = 50)
     private String lastName;
 
+    // Obligatorio: en el registro solo imageUrl es opcional (enunciado §3.2, CU-01).
+    @NotBlank
     @Email
     @Size(min = 5, max = 254)
     private String email;
