@@ -190,9 +190,9 @@ stateDiagram-v2
 
 - Contrato REST de turnos para KMP: rutas, DTOs y nombres de los `code` propios (DPT-18).
 - Contrato concreto con el catálogo para su CU-07: rutas, DTOs y códigos de error.
-- Cómo se comparte la clave de firma del JWT con el catálogo, y cómo se obtiene el `id` del
-  usuario a partir del JWT (DPT-21): issue de la base JHipster.
 - Motor de base y herramienta de migraciones: resuelto en el
   [ADR 0001 (PostgreSQL)](../adr/0001-postgresql.md) y el
   [ADR 0002 (Liquibase)](../adr/0002-liquibase.md). El índice único parcial de DPT-17 es uno de
   los motivos de PostgreSQL.
+- Clave de firma del JWT compartida con el catálogo y obtención del `id` del usuario a partir del
+  JWT (DPT-21): resuelto en el [ADR 0003 (emisión del JWT y usuarios)](../adr/0003-emision-jwt-y-usuarios.md).
