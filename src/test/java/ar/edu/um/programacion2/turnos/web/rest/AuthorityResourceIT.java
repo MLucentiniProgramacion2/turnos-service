@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import ar.edu.um.programacion2.turnos.IntegrationTest;
 import ar.edu.um.programacion2.turnos.domain.Authority;
 import ar.edu.um.programacion2.turnos.repository.AuthorityRepository;
+import ar.edu.um.programacion2.turnos.security.AuthoritiesConstants;
 import jakarta.persistence.EntityManager;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -84,45 +85,6 @@ class AuthorityResourceIT {
 
     @Test
     @Transactional
-    void createAuthority() throws Exception {
-        long databaseSizeBeforeCreate = getRepositoryCount();
-        // Create the Authority
-        var returnedAuthority = om.readValue(
-            restAuthorityMockMvc
-                .perform(post(ENTITY_API_URL).contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsBytes(authority)))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString(),
-            Authority.class
-        );
-
-        // Validate the Authority in the database
-        assertIncrementedRepositoryCount(databaseSizeBeforeCreate);
-        assertAuthorityUpdatableFieldsEquals(returnedAuthority, getPersistedAuthority(returnedAuthority));
-
-        insertedAuthority = returnedAuthority;
-    }
-
-    @Test
-    @Transactional
-    void createAuthorityWithExistingId() throws Exception {
-        // Create the Authority with an existing ID
-        insertedAuthority = authorityRepository.saveAndFlush(authority);
-
-        long databaseSizeBeforeCreate = getRepositoryCount();
-
-        // An entity with an existing ID cannot be created, so this API call must fail
-        restAuthorityMockMvc
-            .perform(post(ENTITY_API_URL).contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsBytes(authority)))
-            .andExpect(status().isBadRequest());
-
-        // Validate the Authority in the database
-        assertSameRepositoryCount(databaseSizeBeforeCreate);
-    }
-
-    @Test
-    @Transactional
     void getAllAuthorities() throws Exception {
         // Initialize the database
         authority.setName(UUID.randomUUID().toString());
@@ -160,32 +122,40 @@ class AuthorityResourceIT {
 
     @Test
     @Transactional
-    void deleteAuthority() throws Exception {
-        // Initialize the database
-        authority.setName(UUID.randomUUID().toString());
-        insertedAuthority = authorityRepository.saveAndFlush(authority);
+    void adminNoPuedeCrearAutoridades() throws Exception {
+        long databaseSizeBeforeCreate = getRepositoryCount();
+        Authority roleService = new Authority().name("ROLE_SERVICE");
 
+        restAuthorityMockMvc
+            .perform(post(ENTITY_API_URL).contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsBytes(roleService)))
+            .andExpect(status().is4xxClientError());
+
+        assertSameRepositoryCount(databaseSizeBeforeCreate);
+        assertThat(authorityRepository.existsById("ROLE_SERVICE")).isFalse();
+    }
+
+    @Test
+    @Transactional
+    void adminNoPuedeBorrarAutoridades() throws Exception {
         long databaseSizeBeforeDelete = getRepositoryCount();
 
-        // Delete the authority
         restAuthorityMockMvc
-            .perform(delete(ENTITY_API_URL_ID, authority.getName()).accept(MediaType.APPLICATION_JSON))
-            .andExpect(status().isNoContent());
+            .perform(delete(ENTITY_API_URL_ID, AuthoritiesConstants.USER).accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().is4xxClientError());
 
-        // Validate the database contains one less item
-        assertDecrementedRepositoryCount(databaseSizeBeforeDelete);
+        assertSameRepositoryCount(databaseSizeBeforeDelete);
+        assertThat(authorityRepository.existsById(AuthoritiesConstants.USER)).isTrue();
+    }
+
+    @Test
+    @Transactional
+    @WithMockUser(authorities = AuthoritiesConstants.USER)
+    void usuarioComunNoPuedeListarAutoridades() throws Exception {
+        restAuthorityMockMvc.perform(get(ENTITY_API_URL)).andExpect(status().isForbidden());
     }
 
     protected long getRepositoryCount() {
         return authorityRepository.count();
-    }
-
-    protected void assertIncrementedRepositoryCount(long countBefore) {
-        assertThat(countBefore + 1).isEqualTo(getRepositoryCount());
-    }
-
-    protected void assertDecrementedRepositoryCount(long countBefore) {
-        assertThat(countBefore - 1).isEqualTo(getRepositoryCount());
     }
 
     protected void assertSameRepositoryCount(long countBefore) {
