@@ -69,13 +69,19 @@ mismos motivos valen acá.
 | Claim | Valor | Para qué |
 | --- | --- | --- |
 | `sub` | login | Identidad visible; la usa Spring Security como nombre del usuario. |
-| `auth` | autoridades del usuario, separadas por espacio | Permisos (`ROLE_USER`, `ROLE_ADMIN`). |
+| `auth` | roles del usuario, separados por espacio | Permisos (`ROLE_USER`, `ROLE_ADMIN`). |
 | `userId` | `id` interno (número) | Dueño de procesos y reservas (DPT-21). |
 | `iat`, `exp` | emisión y vencimiento | Vigencia: **24 h**, o **30 días** con `rememberMe` (valores de JHipster). |
 
 El token **no** lleva `aud`, `iss` ni `ROLE_SERVICE` (DPT-16): son los del token técnico de
 servicio, y así el catálogo distingue uno de otro. Si el usuario autenticado no tiene id, no se
 emite el token. `SecurityUtils.getCurrentUserId()` lee el `userId` del token del pedido en curso.
+
+`auth` lleva **solo los roles del usuario** (los de `jhi_user_authority`). JHipster copiaba todas
+las autoridades de la autenticación, y Spring Security 7 suma `FACTOR_PASSWORD` al autenticar con
+contraseña (soporte de autenticación multifactor). Ese valor no es un rol: describe cómo se
+autenticó el usuario. Se arma el claim desde el usuario, así cualquier autoridad que agregue Spring
+Security queda fuera del token.
 
 **Por qué el id y no el login:** un admin puede cambiar el login de un usuario en
 `/api/admin/users`. Si los procesos guardaran el login como dueño, al cambiarlo quedarían huérfanos
@@ -87,6 +93,11 @@ Liquibase carga **solo las autoridades** (`ROLE_ADMIN` y `ROLE_USER`), en todos 
 quitaron los usuarios `admin/admin` y `user/user` que JHipster carga por defecto: tienen
 contraseñas conocidas y el repo es público. Como el *changeset* inicial todavía no se había
 aplicado en ninguna base, se editó directamente en vez de agregar uno que los borre.
+
+Los roles son fijos: `/api/authorities` es de **solo lectura** (los `GET`, solo para `ROLE_ADMIN`).
+Se quitaron el alta y la baja que trae JHipster: con ellas, un admin podía crear `ROLE_SERVICE` y
+asignárselo a un usuario, cuyo token llevaría entonces el rol del token técnico de servicio
+(DPT-16).
 
 El rol de administrador es opcional (DPT-14). Para tener uno, el usuario se **registra** como
 cualquier otro y después se le agrega `ROLE_ADMIN` con SQL contra `turnos-db` (ver el README). El
@@ -109,8 +120,13 @@ cambio vale desde el próximo login, porque los permisos viajan en el token.
 
 Viven en `AdminUserDTO`, el DTO que comparten el registro, `POST /api/account` y
 `/api/admin/users`: `login` de 3 a 50 con el patrón de JHipster (DPT-20), `firstName` y `lastName`
-obligatorios de 2 a 50 (DPT-02), `email` de 5 a 254 y `langKey` de 2 a 10. La contraseña va de 4 a
-100.
+obligatorios de 2 a 50 (DPT-02), `email` **obligatorio** de 5 a 254 (en el registro solo `imageUrl`
+es opcional, §3.2) y `langKey` de 2 a 10. La contraseña va de 4 a 100.
+
+JHipster crea la columna `jhi_user.email` como `varchar(191)`, aunque la entidad y el DTO admiten
+254: un email de 192 a 254 caracteres pasaba la validación y la base lo rechazaba con un 500. Un
+*changeset* nuevo (`20261022120000_jhi_user_email_254.xml`) la amplía a `varchar(254)`; el inicial
+no se edita porque ya está aplicado (ADR 0002).
 
 ### Sin `/api/users`
 
@@ -143,11 +159,10 @@ usuarios a cualquier usuario autenticado. Choca con el aislamiento entre usuario
     ajenos, pero el `sub` del token viejo queda desactualizado.
   - Con HS512, cualquiera que tenga la clave (también el catálogo) puede fabricar tokens válidos de
     cualquier usuario y rol. Rotarla exige cambiarla a la vez en los dos servicios.
-  - Un usuario creado por un admin en `/api/admin/users` recibe una contraseña aleatoria y, sin
-    recuperación por correo, no puede iniciar sesión. El alta normal es el registro.
-  - El claim `auth` incluye, además de los roles, `FACTOR_PASSWORD`: Spring Security 7 lo agrega
-    al autenticar con contraseña (soporte de autenticación multifactor). No es un rol y no da
-    permisos.
+  - **Un usuario creado por un admin en `/api/admin/users` no puede iniciar sesión:** JHipster le
+    asigna una contraseña aleatoria y espera que la cambie con el mail de creación, que acá no
+    existe. Se deja así a propósito: **el alta normal es el registro** (`/api/register`), y la
+    gestión de admin sirve para consultar, editar y desactivar usuarios.
 - **Seguridad:**
   - La clave vive solo en el `.env` de cada servicio: nunca en el código, en los `application-*.yml`
     versionados, en los tests, en los logs ni en issues o PRs. La de `.yo-rc.json`, del perfil de

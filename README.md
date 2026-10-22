@@ -68,6 +68,10 @@ docker exec -it turnos-db psql -U turnos_app -d turnos -c \
 (Usar el usuario y la base de `TURNOS_DB_USER` y `TURNOS_DB_NAME` si son otros.) El rol vale desde
 el próximo login: los permisos viajan en el token.
 
+El servicio no envía correos, así que un usuario creado por un admin en `/api/admin/users` queda
+con una contraseña aleatoria y **no puede iniciar sesión**. El alta normal es el registro
+(`/api/register`); la gestión de admin sirve para consultar, editar y desactivar usuarios.
+
 ## Tests
 
 ```bash
