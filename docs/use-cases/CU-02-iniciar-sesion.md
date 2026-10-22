@@ -51,15 +51,15 @@ El usuario ingresa su login y contraseña en la app.
   `iss=turnos-service`). El catálogo rechaza un token de usuario en su endpoint de agenda (CU-07
   del catálogo) y rechaza el token técnico en sus endpoints de usuario (DP-06 del catálogo).
 - **DPT-21 (dueño por `id`):** el token identifica al usuario por su login, pero los procesos y
-  reservas se asocian al `id` interno. Cómo se obtiene el id a partir del token se define en el
-  issue de la base JHipster.
+  reservas se asocian al `id` interno. El token lleva ese id en el claim `userId` y
+  `SecurityUtils.getCurrentUserId()` lo lee (ver [ADR 0003](../adr/0003-emision-jwt-y-usuarios.md)).
 
 ## Notas
 
 - Este JWT es la identidad del **usuario final**. Es distinto del JWT técnico de la cátedra, que
   usa el backend con la API, Redis y Kafka de la cátedra y que nunca llega a la app (contrato §2).
-- La forma de compartir la clave de firma con el catálogo se define en el issue de la base
-  JHipster.
+- La clave de firma se comparte con el catálogo por la variable de entorno `JWT_BASE64_SECRET`,
+  con el mismo valor en los dos servicios (ver [ADR 0003](../adr/0003-emision-jwt-y-usuarios.md)).
 
 ## Respaldo en las consignas
 
