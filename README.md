@@ -1,5 +1,7 @@
 # turnos-service
 
+[![CI](https://github.com/MLucentiniProgramacion2/turnos-service/actions/workflows/ci.yml/badge.svg)](https://github.com/MLucentiniProgramacion2/turnos-service/actions/workflows/ci.yml)
+
 Servicio de **turnos y reservas** del proyecto integrador 2026 (Programación II). Es el dueño de
 los usuarios finales: registra, autentica y **emite el JWT** que la app KMP usa con este servicio y
 con el de catálogo (ver [ADR 0003](docs/adr/0003-emision-jwt-y-usuarios.md)). Además va a
@@ -81,6 +83,10 @@ con una contraseña aleatoria y **no puede iniciar sesión**. El alta normal es 
 
 Los tests de integración levantan su propio PostgreSQL con Testcontainers, así que Docker tiene que
 estar corriendo. No usan el `.env`: el perfil de test tiene una clave JWT fija.
+
+GitHub Actions corre `./mvnw -B -ntp clean verify` en cada pull request hacia `develop` o `main` y
+en cada push a `develop` (workflow [`ci.yml`](.github/workflows/ci.yml)). Si falla, los reportes de
+`surefire` y `failsafe` quedan como artifact por 7 días.
 
 ## Notas
 
