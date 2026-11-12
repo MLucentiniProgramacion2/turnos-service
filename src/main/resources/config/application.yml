@@ -235,3 +235,11 @@ catedra:
     # DPT-08: 2 s para conectar y 5 s para la respuesta completa.
     connect-timeout: ${CATEDRA_CONNECT_TIMEOUT:2s}
     read-timeout: ${CATEDRA_READ_TIMEOUT:5s}
+
+# Servicio de catálogo: agenda vigente (CU-07 del catálogo). Sin valor por defecto: si falta, la aplicación
+# no arranca. Local: http://localhost:8081. DPT-13: 2 s y 5 s, sin reintentos.
+catalogo:
+  api:
+    url: ${CATALOGO_API_URL:}
+    connect-timeout: ${CATALOGO_CONNECT_TIMEOUT:2s}
+    read-timeout: ${CATALOGO_READ_TIMEOUT:5s}

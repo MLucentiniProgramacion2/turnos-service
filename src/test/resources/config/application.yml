@@ -96,3 +96,8 @@ catedra:
     # llega a la cátedra real; los tests del cliente usan un servidor simulado.
     url: http://localhost:1
     token: token-falso-solo-para-tests
+
+catalogo:
+  api:
+    # Solo para tests: nadie escucha en el puerto 1. Los tests del cliente usan un servidor simulado.
+    url: http://localhost:1
