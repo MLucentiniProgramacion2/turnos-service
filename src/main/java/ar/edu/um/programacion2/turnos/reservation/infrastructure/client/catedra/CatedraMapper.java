@@ -5,6 +5,8 @@ import static ar.edu.um.programacion2.turnos.reservation.infrastructure.client.c
 import static ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra.CatedraFormat.required;
 import static ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra.CatedraFormat.time;
 
+import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraHold;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.HoldConfirmation;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.Occupancy;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.OccupancyReport;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.OccupancyStatus;
@@ -56,6 +58,31 @@ final class CatedraMapper {
             time(item.startTime(), "occupancies.startTime"),
             status,
             item.expiresAt() == null ? null : instant(item.expiresAt(), "occupancies.expiresAt")
+        );
+    }
+
+    /** {@code 201} del hold (contrato §9): {@code status} tiene que ser {@code HELD}. */
+    static CatedraHold toHold(CatedraDtos.HoldResponse response) {
+        required(response, "el cuerpo");
+        if (!"HELD".equals(response.status())) {
+            throw new IllegalArgumentException("status no es HELD");
+        }
+        return new CatedraHold(
+            required(response.holdId(), "holdId"),
+            required(response.reservationProcessId(), "reservationProcessId"),
+            instant(response.expiresAt(), "expiresAt")
+        );
+    }
+
+    /** {@code 202} del confirm (contrato §10): {@code status} tiene que ser {@code WAITING_FOR_PHONE}. */
+    static HoldConfirmation toConfirmation(CatedraDtos.ConfirmResponse response) {
+        required(response, "el cuerpo");
+        if (!"WAITING_FOR_PHONE".equals(response.status())) {
+            throw new IllegalArgumentException("status no es WAITING_FOR_PHONE");
+        }
+        return new HoldConfirmation(
+            required(response.reservationProcessId(), "reservationProcessId"),
+            instant(response.expiresAt(), "expiresAt")
         );
     }
 }
