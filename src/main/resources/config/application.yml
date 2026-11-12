@@ -218,3 +218,14 @@ application:
     # Hibernate puede validar antes de que existan las tablas: el arranque falla según cuánto
     # tarde la migración. Con false corre sincrónico en todos los perfiles (issue #10, ADR 0002).
     async-start: false
+
+# API REST de la cátedra (ADR 0004). Sin valor real por defecto: si la variable falta o está vacía,
+# la aplicación no arranca. El ":" vacío es a propósito: sin él, un placeholder sin resolver queda como
+# el texto literal "${CATEDRA_JWT}", que no está vacío y pasaría la validación.
+catedra:
+  api:
+    url: ${CATEDRA_API_URL:}
+    token: ${CATEDRA_JWT:}
+    # DPT-08: 2 s para conectar y 5 s para la respuesta completa.
+    connect-timeout: ${CATEDRA_CONNECT_TIMEOUT:2s}
+    read-timeout: ${CATEDRA_READ_TIMEOUT:5s}
