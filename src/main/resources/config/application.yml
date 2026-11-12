@@ -219,6 +219,12 @@ application:
     # tarde la migración. Con false corre sincrónico en todos los perfiles (issue #10, ADR 0002).
     async-start: false
 
+# Token técnico de servicio hacia el catálogo (DPT-16, ADR 0005). Como máximo 5 min, o el catálogo
+# responde 403 a cada pedido: con más, la aplicación no arranca.
+security:
+  service-token:
+    lifetime: ${SERVICE_TOKEN_LIFETIME:5m}
+
 # API REST de la cátedra (ADR 0004). Sin valor real por defecto: si la variable falta o está vacía,
 # la aplicación no arranca. El ":" vacío es a propósito: sin él, un placeholder sin resolver queda como
 # el texto literal "${CATEDRA_JWT}", que no está vacío y pasaría la validación.
