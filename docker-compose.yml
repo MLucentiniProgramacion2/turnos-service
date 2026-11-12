@@ -1,0 +1,31 @@
+# Infraestructura local del servicio de turnos y reservas.
+# Las credenciales se leen de .env (ver .env.example); nunca se escriben acá.
+# Kafka y la API REST son los de la cátedra: no se levantan localmente.
+
+name: turnos-service
+
+services:
+  turnos-db:
+    image: postgres:18.1-alpine
+    container_name: turnos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${TURNOS_DB_NAME:?Falta TURNOS_DB_NAME en .env}
+      POSTGRES_USER: ${TURNOS_DB_USER:?Falta TURNOS_DB_USER en .env}
+      POSTGRES_PASSWORD: ${TURNOS_DB_PASSWORD:?Falta TURNOS_DB_PASSWORD en .env}
+    ports:
+      # Solo localhost; el puerto del host es configurable para no chocar
+      # con la base del servicio de catálogo (5433).
+      - "127.0.0.1:${TURNOS_DB_PORT:-5434}:5432"
+    volumes:
+      # Desde PostgreSQL 18 la imagen guarda los datos bajo /var/lib/postgresql.
+      - turnos-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  turnos-db-data:
