@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        Procesos de reserva (DPT-05). Una fila por proceso, del CREATING_HOLD hasta su estado final.
+        - id: UUID que genera el caso de uso y ve la app (no una secuencia: no deja deducir cuántos procesos hay).
+        - version: bloqueo optimista (DPT-09). La administra Hibernate (@Version).
+        - user_id: dueño (DPT-21), con FK a jhi_user y sin relación JPA hacia la entidad de JHipster.
+          user_login es solo para mostrar: un admin lo puede cambiar.
+        - Horas: locales de atención, "time" sin zona (contrato §4). La entidad las mapea con
+          @JdbcTypeCode(SqlTypes.LOCAL_TIME) para que no se corran con la zona de la JVM (#27 del catálogo).
+        - Los identificadores y textos de la cátedra van en "text": el contrato no les fija largo.
+          hold_id y reservation_process_id son únicos; PostgreSQL admite varios NULL en un UNIQUE.
+        - CHECK: los valores de status, los datos del hold todos o ninguno y obligatorios según el estado,
+          la confirmación en CONFIRMED, el turno con inicio antes del fin y la duración positiva. El resto de
+          los datos por estado lo valida el modelo (ReservationProcess). addCheckConstraint es de Liquibase
+          Pro; por eso van con sql y con su rollback explícito.
+    -->
+    <changeSet id="reservation-001-reservation-process" author="maximoLucentini">
+        <createTable tableName="reservation_process" remarks="Procesos de reserva de los usuarios">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" primaryKeyName="pk_reservation_process" nullable="false"/>
+            </column>
+            <column name="version" type="bigint" remarks="Bloqueo optimista">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="bigint" remarks="Dueño: id interno del usuario (DPT-21)">
+                <constraints
+                    nullable="false"
+                    foreignKeyName="fk_reservation_process_user"
+                    referencedTableName="jhi_user"
+                    referencedColumnNames="id"/>
+            </column>
+            <column name="user_login" type="varchar(50)" remarks="Solo para mostrar">
+                <constraints nullable="false"/>
+            </column>
+            <column name="professional_id" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="appointment_date" type="date">
+                <constraints nullable="false"/>
+            </column>
+            <column name="start_time" type="time" remarks="Hora local de atención">
+                <constraints nullable="false"/>
+            </column>
+            <column name="end_time" type="time" remarks="Hora local de atención">
+                <constraints nullable="false"/>
+            </column>
+            <column name="professional_first_name" type="varchar(100)" remarks="Histórico, solo para mostrar (DPT-12)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="professional_last_name" type="varchar(100)" remarks="Histórico, solo para mostrar (DPT-12)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="professional_category_name" type="varchar(100)" remarks="Histórico, solo para mostrar (DPT-12)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="slot_duration_minutes" type="integer" remarks="Histórico, solo para mostrar (DPT-12)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="patient_first_name" type="varchar(100)" remarks="Del perfil del usuario (DPT-02). Dato personal">
+                <constraints nullable="false"/>
+            </column>
+            <column name="patient_last_name" type="varchar(100)" remarks="Del perfil del usuario (DPT-02). Dato personal">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="varchar(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="hold_id" type="text">
+                <constraints unique="true" uniqueConstraintName="uq_reservation_process_hold_id"/>
+            </column>
+            <column name="reservation_process_id" type="text" remarks="ID del proceso en la cátedra">
+                <constraints unique="true" uniqueConstraintName="uq_reservation_process_reservation_process_id"/>
+            </column>
+            <column name="expires_at" type="timestamp" remarks="Vencimiento que informa la cátedra (UTC)"/>
+            <column name="request_event_id" type="text" remarks="eventId de AdditionalInformationRequested"/>
+            <column name="phone_request_message" type="text"/>
+            <column name="phone_number" type="varchar(16)" remarks="Normalizado. Dato personal"/>
+            <column name="last_submitted_event_id" type="text" remarks="eventId del último AdditionalInformationSubmitted (DPT-15)"/>
+            <column name="rejection_reason" type="text"/>
+            <column name="rejection_message" type="text"/>
+            <column name="reservation_id" type="bigint" remarks="ID de la reserva en la cátedra"/>
+            <column name="confirmed_at" type="timestamp"/>
+            <column name="cancellation_reason" type="varchar(500)"/>
+            <column name="cancelled_at" type="timestamp"/>
+            <column name="closing_reason" type="text" remarks="Motivo de EXPIRED, INVALID o FAILED"/>
+            <column name="closing_message" type="text"/>
+            <column name="created_at" type="timestamp">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status_changed_at" type="timestamp" remarks="Último cambio de estado (DPT-24)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="reservation_process" indexName="idx_reservation_process_user">
+            <column name="user_id"/>
+        </createIndex>
+        <sql>
+            ALTER TABLE reservation_process ADD CONSTRAINT ck_reservation_process_status
+                CHECK (status IN ('CREATING_HOLD', 'HOLD_CREATED', 'WAITING_FOR_PHONE_REQUEST', 'PHONE_REQUESTED',
+                                  'PHONE_SUBMITTED', 'PHONE_REJECTED', 'CONFIRMED', 'CANCELLED', 'EXPIRED', 'INVALID',
+                                  'FAILED'));
+            ALTER TABLE reservation_process ADD CONSTRAINT ck_reservation_process_hold_all_or_none
+                CHECK ((hold_id IS NULL) = (reservation_process_id IS NULL) AND (hold_id IS NULL) = (expires_at IS NULL));
+            ALTER TABLE reservation_process ADD CONSTRAINT ck_reservation_process_hold_by_status
+                CHECK ((status = 'CREATING_HOLD' AND hold_id IS NULL)
+                    OR status = 'FAILED'
+                    OR (status NOT IN ('CREATING_HOLD', 'FAILED') AND hold_id IS NOT NULL));
+            ALTER TABLE reservation_process ADD CONSTRAINT ck_reservation_process_confirmation
+                CHECK ((reservation_id IS NULL) = (confirmed_at IS NULL) AND (status &lt;&gt; 'CONFIRMED' OR reservation_id IS NOT NULL));
+            ALTER TABLE reservation_process ADD CONSTRAINT ck_reservation_process_time_range
+                CHECK (start_time &lt; end_time);
+            ALTER TABLE reservation_process ADD CONSTRAINT ck_reservation_process_slot_duration
+                CHECK (slot_duration_minutes &gt; 0);
+        </sql>
+        <rollback>
+            <dropTable tableName="reservation_process"/>
+        </rollback>
+    </changeSet>
+
+    <!--
+        Un solo proceso intermedio por usuario (DPT-17): índice único PARCIAL, solo sobre las filas en estado
+        intermedio. Un usuario puede tener muchos CONFIRMED y finales, pero un único proceso en curso, aunque
+        lleguen dos pedidos a la vez (la base resuelve la carrera, no el código).
+        createIndex no admite condición, así que va con sql (depende de PostgreSQL, ADR 0002).
+        La lista tiene que coincidir con ReservationProcessStatus.intermediates(): si se renombra o se agrega un
+        estado sin cambiar este índice, ReservationProcessSchemaIT falla.
+    -->
+    <changeSet id="reservation-001-reservation-process-one-intermediate" author="maximoLucentini">
+        <sql>
+            CREATE UNIQUE INDEX uq_reservation_process_one_intermediate_per_user ON reservation_process (user_id)
+                WHERE status IN ('CREATING_HOLD', 'HOLD_CREATED', 'WAITING_FOR_PHONE_REQUEST', 'PHONE_REQUESTED',
+                                 'PHONE_SUBMITTED', 'PHONE_REJECTED');
+        </sql>
+        <rollback>
+            <dropIndex tableName="reservation_process" indexName="uq_reservation_process_one_intermediate_per_user"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
