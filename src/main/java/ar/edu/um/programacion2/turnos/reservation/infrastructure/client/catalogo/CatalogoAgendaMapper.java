@@ -4,22 +4,17 @@ import ar.edu.um.programacion2.turnos.reservation.domain.model.ProfessionalAgend
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ProfessionalAgenda.AgendaCategory;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ProfessionalAgenda.AgendaProfessional;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.WeeklySchedule;
+import ar.edu.um.programacion2.turnos.reservation.infrastructure.client.LocalTimeFormat;
 import java.time.DayOfWeek;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.time.format.ResolverStyle;
 
 /**
  * Traduce la agenda del catálogo al dominio. Lanza {@link IllegalArgumentException} con el campo que falla y sin su valor.
  * <p>
  * El catálogo manda las horas siempre como {@code HH:mm:ss}, pero también se acepta {@code HH:mm}, como pide el contrato
- * de la cátedra para sus horas (§4): son las mismas horas, publicadas por la cátedra. Lo que no es ninguno de los dos
- * (fracciones de segundo, {@code 9:00}, {@code 24:00}) es inválido.
+ * de la cátedra para sus horas (§4): son las mismas horas, publicadas por la cátedra. Las lee {@link LocalTimeFormat}, el
+ * mismo formateador estricto que usa el cliente de la cátedra.
  */
 final class CatalogoAgendaMapper {
-
-    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm[:ss]").withResolverStyle(ResolverStyle.STRICT);
 
     private CatalogoAgendaMapper() {}
 
@@ -52,8 +47,8 @@ final class CatalogoAgendaMapper {
         return new WeeklySchedule(
             required(schedule.id(), "weeklySchedules.id"),
             dayOfWeek(schedule.dayOfWeek()),
-            time(schedule.startTime(), "weeklySchedules.startTime"),
-            time(schedule.endTime(), "weeklySchedules.endTime"),
+            LocalTimeFormat.parse(schedule.startTime(), "weeklySchedules.startTime"),
+            LocalTimeFormat.parse(schedule.endTime(), "weeklySchedules.endTime"),
             required(schedule.slotDurationMinutes(), "weeklySchedules.slotDurationMinutes")
         );
     }
@@ -63,14 +58,6 @@ final class CatalogoAgendaMapper {
             return DayOfWeek.valueOf(required(value, "weeklySchedules.dayOfWeek"));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("weeklySchedules.dayOfWeek no es MONDAY a SUNDAY");
-        }
-    }
-
-    private static LocalTime time(String value, String field) {
-        try {
-            return LocalTime.parse(required(value, field), TIME);
-        } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException(field + " no es una hora HH:mm o HH:mm:ss");
         }
     }
 

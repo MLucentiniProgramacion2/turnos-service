@@ -3,13 +3,13 @@ package ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra
 import static ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra.CatedraFormat.date;
 import static ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra.CatedraFormat.instant;
 import static ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra.CatedraFormat.required;
-import static ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra.CatedraFormat.time;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraHold;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.HoldConfirmation;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.Occupancy;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.OccupancyReport;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.OccupancyStatus;
+import ar.edu.um.programacion2.turnos.reservation.infrastructure.client.LocalTimeFormat;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
@@ -55,7 +55,7 @@ final class CatedraMapper {
         };
         return new Occupancy(
             date,
-            time(item.startTime(), "occupancies.startTime"),
+            LocalTimeFormat.parse(item.startTime(), "occupancies.startTime"),
             status,
             item.expiresAt() == null ? null : instant(item.expiresAt(), "occupancies.expiresAt")
         );

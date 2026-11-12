@@ -6,6 +6,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.model.HoldConfirmation;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.PatientName;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.CatedraOutcomeUnknownException;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.HoldGateway;
+import ar.edu.um.programacion2.turnos.reservation.infrastructure.client.LocalTimeFormat;
 import java.util.Objects;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -41,7 +42,7 @@ public class CatedraHoldClient implements HoldGateway {
         CatedraDtos.HoldRequest request = new CatedraDtos.HoldRequest(
             slot.professionalId(),
             slot.date().toString(),
-            CatedraFormat.format(slot.startTime()),
+            LocalTimeFormat.format(slot.startTime()),
             Objects.requireNonNull(externalPatientId, "Falta el externalPatientId")
         );
         byte[] body = post(restClient.post().uri(HOLDS_PATH), request, "al crear el hold", 201);
