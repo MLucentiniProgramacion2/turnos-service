@@ -49,6 +49,7 @@ public final class ReservationTestDatabase {
     public static void limpiar(TransactionTemplate tx, EntityManager em) {
         tx.executeWithoutResult(status -> {
             em.createNativeQuery("delete from reservation_process").executeUpdate();
+            em.createNativeQuery("delete from processed_event").executeUpdate();
             em.createNativeQuery("delete from jhi_user_authority where user_id in (select id from jhi_user where login like 'reserva-%')").executeUpdate();
             em.createNativeQuery("delete from jhi_user where login like 'reserva-%'").executeUpdate();
         });

@@ -42,8 +42,11 @@ Es la misma decisión que tomó el servicio de catálogo (su ADR 0002), pero cad
 propios *changelogs* y su propia tabla de control: ninguno aplica migraciones sobre la base del
 otro.
 
-**Pendiente:** el formato de los *changelogs* de negocio (XML como JHipster, o YAML/SQL) se
-decide al escribir la primera migración.
+**Formato de los *changelogs* de negocio (resuelto en el issue #10):** XML, como los de JHipster y
+los del catálogo, uno por tabla, en `config/liquibase/changelog/<feature>/` (por ejemplo,
+`reservation/001-reservation-process.xml`) e incluidos uno por uno desde `master.xml`, porque el
+orden importa. Lo que el XML de Liquibase no tiene en la edición gratuita (`CHECK` e índices con
+condición) va en *changesets* `sql`, con su *rollback* explícito.
 
 ## Alternativas consideradas
 

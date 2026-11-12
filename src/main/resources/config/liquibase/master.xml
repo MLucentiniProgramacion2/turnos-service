@@ -18,6 +18,7 @@
         (ADR 0002). Se incluyen uno por uno (no con includeAll) porque el orden importa.
     -->
     <include file="config/liquibase/changelog/reservation/001-reservation-process.xml" relativeToChangelogFile="false"/>
+    <include file="config/liquibase/changelog/reservation/002-processed-event.xml" relativeToChangelogFile="false"/>
     <!-- jhipster-needle-liquibase-add-changelog - JHipster will add liquibase changelogs here -->
     <!-- jhipster-needle-liquibase-add-constraints-changelog - JHipster will add liquibase constraints changelogs here -->
     <!-- jhipster-needle-liquibase-add-incremental-changelog - JHipster will add incremental liquibase changelogs here -->
