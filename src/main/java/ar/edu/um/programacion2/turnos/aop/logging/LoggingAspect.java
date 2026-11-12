@@ -1,6 +1,7 @@
 package ar.edu.um.programacion2.turnos.aop.logging;
 
 import java.util.Arrays;
+import java.util.stream.Collectors;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.AfterThrowing;
@@ -17,6 +18,12 @@ import tech.jhipster.config.JHipsterConstants;
  * Aspect for logging execution of service and repository Spring components.
  *
  * By default, it only runs with the "dev" profile.
+ * <p>
+ * <strong>Logs the types of the arguments and of the result, never their values</strong> (issue #10). JHipster logged
+ * the values with {@code toString()}, and in {@code dev} that printed the user's JWT ({@code Exit: authorize()}: the
+ * {@code toString()} of a {@code ResponseEntity} includes its headers), the passwords in plain text
+ * ({@code Enter: registerUser()} and {@code changePassword()}) and personal data (email and names of
+ * {@code AdminUserDTO}). With types only, no current or future method can leak a value through this aspect.
  */
 @Aspect
 public class LoggingAspect {
@@ -87,7 +94,7 @@ public class LoggingAspect {
     public Object logAround(ProceedingJoinPoint joinPoint) throws Throwable {
         var log = logger(joinPoint);
         if (log.isDebugEnabled()) {
-            log.debug("Enter: {}() with argument[s] = {}", joinPoint.getSignature().getName(), Arrays.toString(joinPoint.getArgs()));
+            log.debug("Enter: {}() with argument types = {}", joinPoint.getSignature().getName(), typesOf(joinPoint.getArgs()));
         }
         try {
             Object result = joinPoint.proceed();
@@ -101,14 +108,27 @@ public class LoggingAspect {
 
     private void logExit(Logger log, JoinPoint joinPoint, Object result) {
         if (log.isDebugEnabled()) {
-            log.debug("Exit: {}() with result = {}", joinPoint.getSignature().getName(), result);
+            log.debug("Exit: {}() with result type = {}", joinPoint.getSignature().getName(), typeOf(result));
         }
     }
 
     private void logIllegalArgument(Logger log, JoinPoint joinPoint) {
         if (log.isErrorEnabled()) {
-            log.error("Illegal argument: {} in {}()", Arrays.toString(joinPoint.getArgs()), joinPoint.getSignature().getName());
+            log.error("Illegal argument types: {} in {}()", typesOf(joinPoint.getArgs()), joinPoint.getSignature().getName());
         }
+    }
+
+    private static String typesOf(Object[] values) {
+        return Arrays.stream(values).map(LoggingAspect::typeOf).collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    /** The simple name of the runtime type; the full name for anonymous classes, whose simple name is empty. */
+    private static String typeOf(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        String simpleName = value.getClass().getSimpleName();
+        return simpleName.isEmpty() ? value.getClass().getName() : simpleName;
     }
 
     private void logException(JoinPoint joinPoint, Throwable e) {
