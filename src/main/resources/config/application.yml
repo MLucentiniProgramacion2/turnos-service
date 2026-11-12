@@ -211,4 +211,35 @@ jhipster:
 # https://www.jhipster.tech/common-application-properties/
 # ===================================================================
 
-# application:
+application:
+  liquibase:
+    # Liquibase tiene que terminar antes de que Hibernate valide el esquema (ddl-auto: validate).
+    # Con true (valor por defecto de JHipster), en el perfil dev Liquibase corre en otro hilo y
+    # Hibernate puede validar antes de que existan las tablas: el arranque falla según cuánto
+    # tarde la migración. Con false corre sincrónico en todos los perfiles (issue #10, ADR 0002).
+    async-start: false
+
+# Token técnico de servicio hacia el catálogo (DPT-16, ADR 0005). Como máximo 5 min, o el catálogo
+# responde 403 a cada pedido: con más, la aplicación no arranca.
+security:
+  service-token:
+    lifetime: ${SERVICE_TOKEN_LIFETIME:5m}
+
+# API REST de la cátedra (ADR 0004). Sin valor real por defecto: si la variable falta o está vacía,
+# la aplicación no arranca. El ":" vacío es a propósito: sin él, un placeholder sin resolver queda como
+# el texto literal "${CATEDRA_JWT}", que no está vacío y pasaría la validación.
+catedra:
+  api:
+    url: ${CATEDRA_API_URL:}
+    token: ${CATEDRA_JWT:}
+    # DPT-08: 2 s para conectar y 5 s para la respuesta completa.
+    connect-timeout: ${CATEDRA_CONNECT_TIMEOUT:2s}
+    read-timeout: ${CATEDRA_READ_TIMEOUT:5s}
+
+# Servicio de catálogo: agenda vigente (CU-07 del catálogo). Sin valor por defecto: si falta, la aplicación
+# no arranca. Local: http://localhost:8081. DPT-13: 2 s y 5 s, sin reintentos.
+catalogo:
+  api:
+    url: ${CATALOGO_API_URL:}
+    connect-timeout: ${CATALOGO_CONNECT_TIMEOUT:2s}
+    read-timeout: ${CATALOGO_READ_TIMEOUT:5s}

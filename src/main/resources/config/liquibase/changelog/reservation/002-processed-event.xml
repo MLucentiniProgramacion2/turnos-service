@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        Eventos de Kafka de la cátedra ya procesados (DPT-15, contrato §18.1): la barrera de idempotencia.
+        La clave primaria es el eventId, que es texto; el contrato no fija su largo. Se escribe en la misma
+        transacción que el cambio de estado, también para los eventos procesados sin efecto.
+    -->
+    <changeSet id="reservation-002-processed-event" author="maximoLucentini">
+        <createTable tableName="processed_event" remarks="Eventos de la cátedra ya procesados">
+            <column name="event_id" type="text">
+                <constraints primaryKey="true" primaryKeyName="pk_processed_event" nullable="false"/>
+            </column>
+            <column name="event_type" type="varchar(60)" remarks="Por ejemplo, AppointmentConfirmed">
+                <constraints nullable="false"/>
+            </column>
+            <column name="processed_at" type="timestamp">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

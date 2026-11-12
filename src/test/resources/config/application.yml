@@ -84,4 +84,20 @@ jhipster:
 # https://www.jhipster.tech/common-application-properties/
 # ===================================================================
 
-# application:
+application:
+  liquibase:
+    # Igual que en el application.yml principal, que este archivo tapa en los tests: Liquibase
+    # termina antes de que Hibernate valide el esquema, sin depender del nombre del perfil.
+    async-start: false
+
+catedra:
+  api:
+    # Solo para tests: valores falsos. Nadie escucha en el puerto 1, así que ningún test de contexto
+    # llega a la cátedra real; los tests del cliente usan un servidor simulado.
+    url: http://localhost:1
+    token: token-falso-solo-para-tests
+
+catalogo:
+  api:
+    # Solo para tests: nadie escucha en el puerto 1. Los tests del cliente usan un servidor simulado.
+    url: http://localhost:1

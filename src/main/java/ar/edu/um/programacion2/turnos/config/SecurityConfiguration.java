@@ -41,13 +41,16 @@ public class SecurityConfiguration {
                     .requestMatchers(HttpMethod.POST, "/api/authenticate").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/authenticate").permitAll()
                     .requestMatchers("/api/register").permitAll()
-                    .requestMatchers("/api/admin/**").hasAuthority(AuthoritiesConstants.ADMIN)
-                    .requestMatchers("/api/**").authenticated()
-                    .requestMatchers("/v3/api-docs/**").hasAuthority(AuthoritiesConstants.ADMIN)
+                    // Las reglas de usuario rechazan el token técnico de servicio (ROLE_SERVICE, ADR 0005): turnos lo
+                    // firma con la misma clave que los de usuario, así que la firma no dice qué clase de token es.
+                    .requestMatchers("/api/admin/**").access(TokenAuthorizations.userToken(AuthoritiesConstants.ADMIN))
+                    .requestMatchers("/api/**").access(TokenAuthorizations.userToken(AuthoritiesConstants.USER, AuthoritiesConstants.ADMIN))
+                    .requestMatchers("/v3/api-docs/**").access(TokenAuthorizations.userToken(AuthoritiesConstants.ADMIN))
                     .requestMatchers("/management/health").permitAll()
                     .requestMatchers("/management/health/**").permitAll()
+                    // Pública: responde lo mismo con cualquier token que sin token.
                     .requestMatchers("/management/info").permitAll()
-                    .requestMatchers("/management/**").hasAuthority(AuthoritiesConstants.ADMIN)
+                    .requestMatchers("/management/**").access(TokenAuthorizations.userToken(AuthoritiesConstants.ADMIN))
             )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(exceptions ->

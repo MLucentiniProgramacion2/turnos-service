@@ -10,8 +10,13 @@ import ar.edu.um.programacion2.turnos.domain.Authority;
 import ar.edu.um.programacion2.turnos.domain.User;
 import ar.edu.um.programacion2.turnos.repository.UserRepository;
 import ar.edu.um.programacion2.turnos.security.AuthoritiesConstants;
+import ar.edu.um.programacion2.turnos.service.UserService;
 import ar.edu.um.programacion2.turnos.service.dto.AdminUserDTO;
 import ar.edu.um.programacion2.turnos.web.rest.vm.ManagedUserVM;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Instant;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -20,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -69,6 +75,33 @@ class RegistroUsuarioIT {
         assertThat(creado.getId()).isNotEqualTo(999_999L);
         assertThat(creado.getCreatedBy()).isNotEqualTo("otro");
         assertThat(creado.getCreatedDate()).isAfter(Instant.parse("2000-01-01T00:00:00Z"));
+    }
+
+    /**
+     * El {@code toString()} de {@code User} incluye email y nombres (los del paciente, DPT-02). JHipster lo registraba en
+     * DEBUG al crear el usuario, y el perfil {@code dev} lo dejaba en el log (issue #10). Se fuerza DEBUG en el logger de
+     * {@link UserService}, como en {@code dev}, y se captura lo que escribe.
+     */
+    @Test
+    @Transactional
+    void elRegistroNoDejaElEmailNiLosNombresNiLaContrasenaEnElLog() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(UserService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+        try {
+            mockMvc
+                .perform(post("/api/register").contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsBytes(usuarioValido())))
+                .andExpect(status().isCreated());
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(null);
+        }
+
+        String log = String.join("\n", appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList());
+        assertThat(log).contains("Created Information for User: id=");
+        assertThat(log).doesNotContain(LOGIN + "@example.com", "Ana", "Pérez", "clave-de-test");
     }
 
     static Stream<Arguments> pedidosInvalidos() {

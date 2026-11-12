@@ -11,6 +11,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.util.List;
+import java.util.Optional;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.Signature;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +20,9 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 class LoggingAspectTest {
 
@@ -59,27 +63,73 @@ class LoggingAspectTest {
     }
 
     @Test
-    void logAroundLogsEnterAndExit() throws Throwable {
+    void logAroundLogsEnterAndExitWithTypesOnly() throws Throwable {
         when(joinPoint.proceed()).thenReturn("result");
 
         Object result = aspect.logAround(joinPoint);
 
         assertThat(result).isEqualTo("result");
         assertThat(messages()).containsExactly(
-            "Enter: loggedMethod() with argument[s] = [arg]",
-            "Exit: loggedMethod() with result = result"
+            "Enter: loggedMethod() with argument types = [String]",
+            "Exit: loggedMethod() with result type = String"
         );
     }
 
     @Test
-    void logAroundRethrowsIllegalArgumentException() throws Throwable {
+    void logAroundRethrowsIllegalArgumentExceptionAndLogsTypesOnly() throws Throwable {
+        when(joinPoint.getArgs()).thenReturn(new Object[] { "ClaveSecreta123" });
         when(joinPoint.proceed()).thenThrow(new IllegalArgumentException("invalid"));
 
         assertThatThrownBy(() -> aspect.logAround(joinPoint))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("invalid");
 
-        assertThat(messages()).contains("Illegal argument: [arg] in loggedMethod()");
+        assertThat(messages()).contains("Illegal argument types: [String] in loggedMethod()");
+        assertThat(String.join("\n", messages())).doesNotContain("ClaveSecreta123");
+    }
+
+    /**
+     * El caso de {@code AuthenticateController.authorize()} (issue #10): el {@code toString()} de un {@code ResponseEntity}
+     * incluye sus cabeceras, así que {@code Exit:} imprimía el JWT del usuario en el log de {@code dev}.
+     */
+    @Test
+    void exitDoesNotLogTheTokenOfAResponseEntityWithAuthorization() throws Throwable {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth("eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJzb25kYSJ9.firma-falsa");
+        when(joinPoint.proceed()).thenReturn(new ResponseEntity<>("cuerpo", headers, HttpStatus.OK));
+
+        aspect.logAround(joinPoint);
+
+        assertThat(messages()).contains("Exit: loggedMethod() with result type = ResponseEntity");
+        assertThat(String.join("\n", messages())).doesNotContain("eyJ").doesNotContain("Bearer").doesNotContain("cuerpo");
+    }
+
+    /**
+     * El caso de {@code UserService.registerUser(dto, password)} y {@code changePassword(actual, nueva)} (issue #10):
+     * {@code Enter:} imprimía las contraseñas en texto plano en el log de {@code dev}.
+     */
+    @Test
+    void enterDoesNotLogPasswordsOrPersonalDataPassedAsArguments() throws Throwable {
+        when(joinPoint.getArgs()).thenReturn(new Object[] { "ClaveActual123", "ClaveNueva456", Optional.of("ana@example.com"), null });
+        when(joinPoint.proceed()).thenReturn(null);
+
+        aspect.logAround(joinPoint);
+
+        assertThat(messages()).containsExactly(
+            "Enter: loggedMethod() with argument types = [String, String, Optional, null]",
+            "Exit: loggedMethod() with result type = null"
+        );
+    }
+
+    @Test
+    void anAnonymousClassIsLoggedWithItsFullName() throws Throwable {
+        Object anonima = new Object() {};
+        when(joinPoint.getArgs()).thenReturn(new Object[] { anonima });
+        when(joinPoint.proceed()).thenReturn(null);
+
+        aspect.logAround(joinPoint);
+
+        assertThat(messages().getFirst()).isEqualTo("Enter: loggedMethod() with argument types = [" + anonima.getClass().getName() + "]");
     }
 
     @Test

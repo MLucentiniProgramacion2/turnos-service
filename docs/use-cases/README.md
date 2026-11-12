@@ -130,6 +130,16 @@ Solo se aceptan transiciones hacia adelante. Las que "se adelantan" son válidas
 `AppointmentConfirmed` antes de guardar `PHONE_SUBMITTED`. Un evento que llega a un estado final, o
 uno distinto de la cancelación que llega a `CONFIRMED`, se registra como procesado sin efecto.
 
+**Nota (issue #10): "cualquier intermedio" no incluye `CREATING_HOLD`.** En la tabla de CU-07 y en
+este diagrama, `CONFIRMED`, `EXPIRED`, `INVALID` y `CANCELLED` (por reconciliación) salen de
+"cualquier intermedio". Desde `CREATING_HOLD` ese caso es inalcanzable: los eventos y la
+reconciliación buscan el proceso por `reservationProcessId`, que en `CREATING_HOLD` todavía no
+existe (CU-07 2.2a), y CU-11 solo lo pasa a `FAILED`. Por eso, en `CREATING_HOLD`, el modelo deja
+sin efecto (`NOT_APPLICABLE`) los hechos que llegan por `reservationProcessId`: pedido de teléfono,
+confirmación, vencimiento, invalidez y cancelación por reconciliación. Así nunca existe un proceso
+cerrado sin los datos del hold, que la tabla exige con un `CHECK`. La matriz completa (estado por
+operación) está en `ReservationProcessMatrix`, en los tests.
+
 ```mermaid
 stateDiagram-v2
     state "En curso (estados intermedios)" as EnCurso {
