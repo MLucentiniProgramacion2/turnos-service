@@ -42,6 +42,9 @@ Llega al topic de acciones uno de estos eventos: `AppointmentConfirmed`,
 | `AppointmentProcessInvalid` | cualquier intermedio | `INVALID` | `reason` |
 | `AppointmentCancelled` | `CONFIRMED` | `CANCELLED` | `reason` (puede ser `null`), instante de cancelación |
 
+"Cualquier intermedio" excluye `CREATING_HOLD`, que todavía no tiene `reservationProcessId`: ver la
+nota de la máquina de estados en el [README](README.md#máquina-de-estados-del-proceso-de-reserva).
+
 ## Flujos alternativos
 
 - **1a. Mensaje mal formado o `eventType` desconocido:** no se reintenta. Se registra en el log y
