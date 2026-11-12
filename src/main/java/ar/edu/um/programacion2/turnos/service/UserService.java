@@ -26,6 +26,9 @@ import tech.jhipster.security.RandomUtil;
 @Transactional
 public class UserService {
 
+    // Los LOG.debug registran el id y no el User: su toString() incluye email y nombres, que son datos personales
+    // (los nombres son los del paciente, DPT-02) y en el perfil dev quedaban en el log (issue #10).
+
     private static final Logger LOG = LoggerFactory.getLogger(UserService.class);
 
     private final UserRepository userRepository;
@@ -68,7 +71,7 @@ public class UserService {
         authorityRepository.findById(AuthoritiesConstants.USER).ifPresent(authorities::add);
         newUser.setAuthorities(authorities);
         userRepository.save(newUser);
-        LOG.debug("Created Information for User: {}", newUser);
+        LOG.debug("Created Information for User: id={}", newUser.getId());
         return newUser;
     }
 
@@ -102,7 +105,7 @@ public class UserService {
             user.setAuthorities(authorities);
         }
         userRepository.save(user);
-        LOG.debug("Created Information for User: {}", user);
+        LOG.debug("Created Information for User: id={}", user.getId());
         return user;
     }
 
@@ -136,7 +139,7 @@ public class UserService {
                     .map(Optional::get)
                     .forEach(managedAuthorities::add);
                 userRepository.save(user);
-                LOG.debug("Changed Information for User: {}", user);
+                LOG.debug("Changed Information for User: id={}", user.getId());
                 return user;
             })
             .map(AdminUserDTO::new);
@@ -145,7 +148,7 @@ public class UserService {
     public void deleteUser(String login) {
         userRepository.findOneByLogin(login).ifPresent(user -> {
             userRepository.delete(user);
-            LOG.debug("Deleted User: {}", user);
+            LOG.debug("Deleted User: id={}", user.getId());
         });
     }
 
@@ -170,7 +173,7 @@ public class UserService {
                 user.setLangKey(langKey);
                 user.setImageUrl(imageUrl);
                 userRepository.save(user);
-                LOG.debug("Changed Information for User: {}", user);
+                LOG.debug("Changed Information for User: id={}", user.getId());
             });
     }
 
@@ -185,7 +188,7 @@ public class UserService {
                 }
                 String encryptedPassword = passwordEncoder.encode(newPassword);
                 user.setPassword(encryptedPassword);
-                LOG.debug("Changed password for User: {}", user);
+                LOG.debug("Changed password for User: id={}", user.getId());
             });
     }
 
