@@ -160,7 +160,7 @@ Con el `202`, la app abre la pantalla del proceso y consulta su estado (CU-08).
 
 | HTTP | `code` | Cuándo | Qué quedó |
 | --- | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | Falta un campo o tiene otro formato | nada |
+| 400 | `VALIDATION_ERROR` | Falta un campo, tiene otro formato o el `professionalId` no es positivo (en el cuerpo lo frena `@Positive`; el `404` por un `id` no positivo es solo de CU-03, donde viene en la ruta) | nada |
 | 400 | `INVALID_DATE_RANGE` | La fecha ya pasó o es posterior a hoy + 60 | nada |
 | 400 | `INVALID_SLOT` | El turno ya empezó, la hora tiene segundos, o no es un turno de un horario habilitado (según el catálogo o según la cátedra) | nada, o un proceso `FAILED` |
 | 400 | `PROFESSIONAL_DISABLED` | El profesional está deshabilitado | nada, o `FAILED` |
