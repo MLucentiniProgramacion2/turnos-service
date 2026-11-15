@@ -16,6 +16,9 @@ public interface JpaReservationProcessRepository extends JpaRepository<Reservati
     /** Consulta derivada: los procesos del usuario en alguno de esos estados. */
     List<ReservationProcessEntity> findByUserIdAndStatusIn(Long userId, Collection<ReservationProcessStatus> statuses);
 
+    /** Consulta derivada: el proceso con ese ID de la cátedra (columna única). */
+    Optional<ReservationProcessEntity> findByReservationProcessId(String reservationProcessId);
+
     /** Consulta derivada: el proceso con ese id si es de ese usuario. */
     Optional<ReservationProcessEntity> findByIdAndUserId(UUID id, Long userId);
 

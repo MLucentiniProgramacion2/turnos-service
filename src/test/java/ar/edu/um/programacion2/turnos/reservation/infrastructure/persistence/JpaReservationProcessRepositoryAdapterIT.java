@@ -300,6 +300,20 @@ class JpaReservationProcessRepositoryAdapterIT {
     }
 
     @Test
+    void unEventoEncuentraElProcesoPorElReservationProcessIdDeLaCatedra() {
+        tx.executeWithoutResult(status -> {
+            adaptador.insert(proceso(ReservationProcessStatus.CREATING_HOLD, ana, 1));
+            adaptador.insert(proceso(ReservationProcessStatus.WAITING_FOR_PHONE_REQUEST, beto, 2));
+        });
+
+        Optional<ReservationProcess> delSegundo = tx.execute(status -> adaptador.findByReservationProcessId("process-a92b47d0-2"));
+        Optional<ReservationProcess> deNadie = tx.execute(status -> adaptador.findByReservationProcessId("process-a92b47d0"));
+
+        assertThat(delSegundo).get().extracting(ReservationProcess::getId).isEqualTo(new ReservationProcessId(idDe(2)));
+        assertThat(deNadie).isEmpty();
+    }
+
+    @Test
     void cu06_2b_unProcesoSeEncuentraPorSuIdSoloSiEsDeEseUsuario() {
         tx.executeWithoutResult(status -> adaptador.insert(proceso(ReservationProcessStatus.PHONE_REQUESTED, ana, 1)));
         ReservationProcessId id = new ReservationProcessId(idDe(1));

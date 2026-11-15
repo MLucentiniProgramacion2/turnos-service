@@ -98,6 +98,11 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
     }
 
     @Override
+    public Optional<ReservationProcess> findByReservationProcessId(String reservationProcessId) {
+        return jpaRepository.findByReservationProcessId(reservationProcessId).map(mapper::toDomain);
+    }
+
+    @Override
     public Optional<ReservationProcess> findByIdAndOwner(ReservationProcessId id, long userId) {
         return jpaRepository.findByIdAndUserId(id.value(), userId).map(mapper::toDomain);
     }

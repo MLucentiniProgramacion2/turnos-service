@@ -99,6 +99,17 @@ class InMemoryReservationProcessRepository implements ReservationProcessReposito
     }
 
     @Override
+    public Optional<ReservationProcess> findByReservationProcessId(String reservationProcessId) {
+        transactions.requireActive();
+        return rows
+            .values()
+            .stream()
+            .filter(row -> row.getHold().map(hold -> hold.reservationProcessId().equals(reservationProcessId)).orElse(false))
+            .findFirst()
+            .map(this::copy);
+    }
+
+    @Override
     public Optional<ReservationProcess> findByIdAndOwner(ReservationProcessId id, long userId) {
         transactions.requireActive();
         return Optional.ofNullable(rows.get(id)).filter(row -> row.getOwner().userId() == userId).map(this::copy);

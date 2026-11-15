@@ -39,6 +39,12 @@ public interface ReservationProcessRepository {
      */
     Optional<ReservationProcess> findActiveBySlot(long userId, long professionalId, LocalDate date, LocalTime startTime);
 
+    /**
+     * El proceso con ese {@code reservationProcessId} de la cátedra (los eventos de Kafka llegan con ese ID). Es único en la
+     * tabla; en {@code CREATING_HOLD} todavía no lo tiene, así que ningún evento lo encuentra.
+     */
+    Optional<ReservationProcess> findByReservationProcessId(String reservationProcessId);
+
     /** El proceso con ese identificador <strong>si es de ese usuario</strong>. */
     Optional<ReservationProcess> findByIdAndOwner(ReservationProcessId id, long userId);
 }
