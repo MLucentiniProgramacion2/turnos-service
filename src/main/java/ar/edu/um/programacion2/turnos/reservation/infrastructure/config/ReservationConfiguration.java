@@ -3,6 +3,7 @@ package ar.edu.um.programacion2.turnos.reservation.infrastructure.config;
 import ar.edu.um.programacion2.turnos.reservation.application.usecases.EventTransactions;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityPolicy;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.EventIdGenerator;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.ReservationProcessIdGenerator;
 import java.time.Clock;
 import java.util.UUID;
@@ -48,5 +49,11 @@ public class ReservationConfiguration {
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setTimeout(Math.toIntExact(properties.getEventTransactionTimeout().toSeconds()));
         return new EventTransactions(template);
+    }
+
+    /** El {@code eventId} de cada evento que publica turnos: un UUID aleatorio, nuevo en cada envío (contrato §15.5). */
+    @Bean
+    public EventIdGenerator eventIdGenerator() {
+        return () -> UUID.randomUUID().toString();
     }
 }
