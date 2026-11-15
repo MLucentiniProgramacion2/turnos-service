@@ -127,7 +127,81 @@ del issue #12) un resultado de CU-07: no tienen un `eventId` confiable o todaví
 
 ## Decisión: el productor
 
-Se completa con CU-06 (parte 4 del issue #12).
+`KafkaPhoneSubmissionPublisher` publica `AdditionalInformationSubmitted` (CU-06) en el topic de
+teléfono, con clave = `reservationProcessId` y el JSON exacto de §15.5 (todos los campos,
+`eventType` y `schemaVersion` fijos, `occurredAt` en UTC sin fracciones). Variables nuevas, sin valor
+por defecto: `CATEDRA_KAFKA_PHONE_TOPIC` y `CATEDRA_GROUP_ID`.
+
+### Los plazos: el usuario está esperando
+
+Por defecto, Kafka espera hasta 60 s en `max.block.ms` y 120 s en `delivery.timeout.ms`. Con el
+usuario esperando la respuesta, se acotan a los valores de DPT-08:
+
+| Propiedad | Valor | Qué acota |
+| --- | --- | --- |
+| `linger.ms` | 0 | no se espera a juntar un lote |
+| `max.block.ms` | 2000 | cuánto bloquea `send` esperando la metadata del topic |
+| `request.timeout.ms` | 3000 | cuánto se espera la respuesta de un pedido al broker |
+| `delivery.timeout.ms` | 5000 | cuánto puede tardar la confirmación, con los reintentos de Kafka incluidos |
+| plazo del futuro | 8000 | cuánto espera el caso de uso: `max.block.ms` + `delivery.timeout.ms` + 1 s |
+
+Dos desigualdades:
+
+- **La de Kafka:** `delivery.timeout.ms >= linger.ms + request.timeout.ms` (5000 ≥ 0 + 3000), o el
+  productor no se construye. Se valida al arrancar (`@AssertTrue` en `CatedraKafkaProperties`) y un
+  test construye el productor con la configuración real.
+- **La del caso de uso:** el plazo del futuro es mayor que `max.block.ms` + `delivery.timeout.ms`. Así
+  el productor siempre termina el futuro antes, con éxito o con su error, y un `503` nunca deja un
+  envío "en vuelo" sin resolver que podría confirmarse después de haberle dicho al usuario que no.
+
+`acks=all`: el broker confirma cuando el registro quedó escrito (CU-06 paso 6). La idempotencia del
+productor (por defecto en Kafka 3 o más) evita duplicados si Kafka reintenta por su cuenta; no
+reemplaza el `eventId` nuevo en cada envío de CU-06.
+
+### Esperar la confirmación: `get` con plazo
+
+En el Tema 13 el productor usa `whenComplete` y sigue. Acá eso no alcanza: el caso de uso guarda
+`PHONE_SUBMITTED` solo si el broker confirmó, y tiene que responderle al usuario si se envió. Se espera
+el `CompletableFuture` con `get(8 s)`. El `whenComplete` queda solo para el log del éxito.
+
+### Comprobar el topic antes del primer envío
+
+El productor no tiene `allow.auto.create.topics` (es del consumidor). **Medido con Testcontainers:** en
+un broker que crea topics solo (el valor por defecto), publicar en un nombre mal escrito **confirma**
+y crea el topic. El teléfono se perdería sin ningún error.
+
+Por eso, antes del primer envío, `Admin.describeTopics` con un plazo de 2 s:
+
+- **nunca al arrancar:** con Kafka o ZeroTier caídos, turnos levanta igual (enunciado §8);
+- **se recuerda solo si salió bien:** si el broker estaba caído, el próximo envío vuelve a comprobar;
+- **si no se pudo comprobar o el topic no existe, no se publica** (`503`, el proceso no cambia).
+
+El plazo de la comprobación entra en el presupuesto de CU-06 solo hasta el primer éxito: 2 + 8 s en
+el peor caso.
+
+Contra el broker de la cátedra no se probó ningún nombre que no sea el real: el comportamiento con
+`auto.create.topics.enable` se midió solo con Testcontainers.
+
+### Lo medido (`KafkaPhoneSubmissionPublisherIT`, `apache/kafka-native:4.1.0`)
+
+| Caso | Qué llega | Cuándo |
+| --- | --- | --- |
+| Envío normal | confirmación; clave y JSON de §15.5 | — |
+| Sin comprobar, topic mal escrito, broker que crea topics | **confirmación**: el topic se crea | 1,6 s |
+| Con la comprobación, topic que no existe | `PhoneSubmissionNotSentException`; el topic no se crea | — |
+| Sin comprobar, topic que no existe, broker que no crea topics | `TimeoutException`: "Topic ... not present in metadata after 2000 ms" | 2,0 s |
+| Broker caído (puerto cerrado) | `PhoneSubmissionNotSentException` (el `Admin` no consigue un nodo) | ~2,2 s, también la segunda vez |
+| Broker pausado después de comprobar (no confirma) | `PhoneSubmissionUnconfirmedException` ← `TimeoutException`: "Expiring 1 record(s) ... 5002 ms has passed since batch creation" | 5,04 s, antes del plazo de 8 s |
+
+### El teléfono fuera del log
+
+- El `KafkaTemplate` usa un `ProducerListener` que no hace nada: el de por defecto
+  (`LoggingProducerListener`) escribe en el log parte del valor del registro que falló.
+- `KafkaProducerException` de Spring tiene un mensaje fijo ("Failed to send"): el adaptador loguea la
+  falla de Kafka que lleva adentro, que nombra el topic y la partición, nunca el valor.
+- `PhoneSubmission`, `SubmitPhoneCommand` y el DTO enmascaran el teléfono en `toString()`.
+- `ReservationPhoneControllerIT` captura todo el log de un CU-06 completo y comprueba que los dígitos
+  del teléfono no aparecen.
 
 ## Consecuencias
 

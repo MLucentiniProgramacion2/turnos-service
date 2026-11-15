@@ -8,7 +8,7 @@ Cada sección se completa con el issue que implementa su caso de uso.
 | --- | --- | --- |
 | `GET /api/professionals/{professionalId}/availability` | [CU-03](use-cases/CU-03-consultar-turnos-disponibles.md) | implementado (#12) |
 | `POST /api/reservation-processes` | [CU-04](use-cases/CU-04-iniciar-reserva.md) | implementado (#12) |
-| `POST /api/reservation-processes/{id}/phone` | [CU-06](use-cases/CU-06-informar-telefono.md) | #12 |
+| `POST /api/reservation-processes/{id}/phone` | [CU-06](use-cases/CU-06-informar-telefono.md) | implementado (#12) |
 
 ## Convenciones
 
@@ -176,3 +176,35 @@ Con el `202`, la app abre la pantalla del proceso y consulta su estado (CU-08).
 | 500 | `INTERNAL_ERROR` | Error propio; si el `detail` avisa que el horario puede quedar bloqueado, el hold se creó y no se pudo registrar | — |
 
 Un proceso `FAILED` o `EXPIRED` es final y no bloquea al usuario: puede volver a reservar.
+
+## CU-06: informar el teléfono
+
+```http
+POST /api/reservation-processes/{id}/phone
+Authorization: Bearer <JWT de usuario>
+Content-Type: application/json
+
+{ "phoneNumber": "+54 9 (261) 555-12.34" }
+```
+
+`{id}` es el `id` del proceso (UUID). El teléfono va como lo escribió el usuario: turnos quita
+espacios, guiones, paréntesis y puntos, igual que la cátedra, y exige `^\+?[0-9]{7,15}$`. Se puede
+enviar cuando el proceso está en `PHONE_REQUESTED`, y otra vez en `PHONE_REJECTED` (después de un
+rechazo), mientras no haya pasado `expiresAt`.
+
+`202 Accepted` + proceso: el teléfono se publicó con confirmación del broker. Normalmente en
+`PHONE_SUBMITTED`; puede venir más avanzado si el resultado ya llegó. La app sigue consultando el
+estado (CU-08) hasta ver el resultado.
+
+| HTTP | `code` | Cuándo | Qué quedó |
+| --- | --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | Falta `phoneNumber`, no es texto o tiene más de 40 caracteres | nada |
+| 400 | `INVALID_PHONE_NUMBER` | El teléfono no tiene el formato que acepta la cátedra. No se repite el valor | nada |
+| 400 | (sin `code`) | `{id}` no es un UUID | nada |
+| 404 | `RESERVATION_PROCESS_NOT_FOUND` | El proceso no existe **o es de otro usuario** (la respuesta es la misma) | nada |
+| 409 | `PHONE_NOT_REQUESTED` | La cátedra todavía no pidió el teléfono | nada |
+| 409 | `PHONE_ALREADY_SUBMITTED` | El teléfono ya se envió: hay que esperar el resultado | nada |
+| 409 | `RESERVATION_PROCESS_CLOSED` | El proceso está confirmado o terminó. Trae `status`, el estado actual | nada |
+| 409 | `RESERVATION_EXPIRED` | Pasó `expiresAt` | nada (el proceso lo cierra el evento de vencimiento) |
+| 503 | `PHONE_SUBMISSION_UNCONFIRMED` | Kafka no confirmó el envío | el proceso no cambia. **Se puede volver a enviar**; si el primer envío había llegado, la cátedra procesa los dos y gana el primer resultado |
+| 500 | `INTERNAL_ERROR` | El teléfono se publicó pero no se pudo guardar el envío | el proceso avanza cuando llegue el resultado |

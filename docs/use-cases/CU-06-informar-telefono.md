@@ -69,6 +69,24 @@ El usuario completa el formulario de teléfono, que la app muestra cuando el pro
   estados acepta transiciones que se adelantan (DPT-05). Se registra el error y se responde
   `500`.
 
+## Notas de implementación (issue #12)
+
+Contrato REST: [`api-rest.md`](../api-rest.md#cu-06-informar-el-teléfono). Productor:
+[ADR 0006](../adr/0006-kafka-en-turnos.md#decisión-el-productor).
+
+- **Paso 3:** lo decide el modelo con `canSubmitPhone(now)`, primero el estado y después el plazo.
+  `expiresAt` es exclusivo: en el instante exacto del vencimiento ya no se acepta. Un proceso
+  `CONFIRMED` con el hold vencido responde 3c, no 3d.
+- **Paso 6:** antes del primer envío se comprueba que el topic de teléfono existe (nunca al
+  arrancar). Si no se puede comprobar, no se publica y se responde como 6a.
+- **6a:** también cuando no se pudo ni comprobar el topic (no se publicó nada). En los dos casos el
+  proceso no cambia y el usuario puede volver a enviar, con un `eventId` nuevo.
+- **7a:** el guardado relee el proceso y aplica `phoneSubmitted`, que **siempre** guarda el `eventId`
+  enviado. Si el resultado llegó antes, el estado no retrocede; si el guardado choca con el evento
+  por `@Version`, se relee y se vuelve a aplicar (hasta 3 veces).
+- **Log:** nunca el teléfono ni el cuerpo del evento. Sí el `eventId`, el `id` del proceso y el
+  `reservationProcessId`.
+
 ## Postcondiciones
 
 - **De éxito:** el evento quedó publicado con un `eventId` nuevo y el proceso está en

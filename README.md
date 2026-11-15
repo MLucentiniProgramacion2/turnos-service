@@ -36,10 +36,11 @@ Completar el `.env` (ignorado por Git):
 - `CATEDRA_API_URL` y `CATEDRA_JWT`: API REST de la cátedra y JWT técnico de la cuenta del
   proyecto, los mismos que en catalogo-service. Solo accesible por ZeroTier. Sin alguno de los dos,
   la aplicación no arranca ([ADR 0004](docs/adr/0004-cliente-http-catedra.md)).
-- `CATEDRA_KAFKA_BOOTSTRAP_SERVERS`, `CATEDRA_KAFKA_ACTIONS_TOPIC` y `CATEDRA_KAFKA_CONSUMER_GROUP`:
-  Kafka de la cátedra, el topic de acciones de `integration` y el grupo propio de turnos
-  (`kafkaConsumerGroupId` con el sufijo `-turnos`, nunca el del catálogo). Sin alguna, la aplicación no
-  arranca; con el broker caído, sí (ADR 0006).
+- `CATEDRA_KAFKA_BOOTSTRAP_SERVERS`, `CATEDRA_KAFKA_ACTIONS_TOPIC`, `CATEDRA_KAFKA_PHONE_TOPIC`,
+  `CATEDRA_KAFKA_CONSUMER_GROUP` y `CATEDRA_GROUP_ID`: Kafka de la cátedra, los dos topics y el
+  `groupId` de `integration`, y el grupo propio de turnos (`kafkaConsumerGroupId` con el sufijo
+  `-turnos`, nunca el del catálogo). Sin alguna, la aplicación no arranca; con el broker caído, sí
+  ([ADR 0006](docs/adr/0006-kafka-en-turnos.md)).
 - `CATALOGO_API_URL`: servicio de catálogo (local: `http://localhost:8081`). Sin ella, la aplicación
   no arranca.
 
