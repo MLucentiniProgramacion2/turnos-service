@@ -133,7 +133,7 @@ eso es obligatorio **solo lo que hace falta para aplicar la transición sin romp
 | Tipo | Obligatorio | Si falta otra cosa |
 | --- | --- | --- |
 | todos | `eventId`, `eventType`, `reservationProcessId` | — |
-| `AdditionalInformationRequested` | `holdId`, `expiresAt` (el modelo los guarda) | `message` puede faltar |
+| `AdditionalInformationRequested` | `expiresAt` (el modelo lo guarda) | `holdId` ausente: se aplica por `reservationProcessId` (la transición no lo usa); `message` puede faltar |
 | `AppointmentConfirmed` | `reservationId` positivo (el `CHECK` de `CONFIRMED` lo exige) | `occurredAt` ausente o ilegible: el reloj |
 | `AdditionalInformationRejected` | — | `reason` ausente: `UNSPECIFIED`; `expiresAt` ausente o ilegible: se conserva el guardado |
 | `AppointmentProcessExpired`, `AppointmentProcessInvalid` | — | `reason` ausente: `UNSPECIFIED` |

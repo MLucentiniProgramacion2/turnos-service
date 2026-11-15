@@ -21,10 +21,11 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <strong>Obligatorio es solo lo que hace falta para aplicar la transición sin romper un invariante</strong>: el
  * {@code eventId}, el {@code eventType}, el {@code reservationProcessId}, el {@code reservationId} de una confirmación
- * (el {@code CHECK} de {@code CONFIRMED} lo exige) y, en el pedido de teléfono, el {@code holdId} y el {@code expiresAt}.
+ * (el {@code CHECK} de {@code CONFIRMED} lo exige) y el {@code expiresAt} del pedido de teléfono (el modelo lo guarda).
  * Lo demás <strong>se degrada con una advertencia</strong> en vez de descartar el evento (decisión del issue #12): un mal
  * formado se confirma sin aplicar, y sin la reconciliación (CU-11) el resultado se perdería por un dato que no hace falta.
  * <ul>
+ * <li>{@code holdId} ausente en el pedido de teléfono: se aplica por {@code reservationProcessId} (la transición no lo usa);</li>
  * <li>{@code occurredAt} ausente o ilegible: el instante del reloj (lo pone el caso de uso);</li>
  * <li>{@code reason} ausente o en blanco en un rechazo, vencimiento o invalidez: {@value #UNSPECIFIED};</li>
  * <li>{@code expiresAt} ausente o ilegible en un rechazo: se conserva el guardado;</li>
@@ -122,10 +123,14 @@ final class ReservationEventMessageMapper {
             };
         }
 
-        /** {@code AdditionalInformationRequested} (§15.4): sin {@code holdId} ni {@code expiresAt}, el modelo no lo puede aplicar. */
+        /**
+         * {@code AdditionalInformationRequested} (§15.4): sin {@code expiresAt} el modelo no lo puede aplicar. Sin
+         * {@code holdId}, sí: la transición no lo usa, así que se degrada como en CU-07 y se aplica por
+         * {@code reservationProcessId}.
+         */
         private ParsedEvent phoneRequested(String holdId) {
             if (holdId == null) {
-                return new ParsedEvent.Malformed(eventId, "falta holdId");
+                degradations.add("holdId ausente: se aplica por reservationProcessId");
             }
             Instant expiresAt = instant(message.expiresAt());
             if (expiresAt == null) {

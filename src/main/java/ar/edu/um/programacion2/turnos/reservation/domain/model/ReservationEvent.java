@@ -33,8 +33,9 @@ public sealed interface ReservationEvent {
     String eventType();
 
     /**
-     * {@code AdditionalInformationRequested} (§15.4, CU-05). {@code holdId} y {@code expiresAt} son obligatorios: el proceso
-     * pasa a {@code PHONE_REQUESTED} con el vencimiento informado. El mensaje es para la app y puede faltar.
+     * {@code AdditionalInformationRequested} (§15.4, CU-05). {@code expiresAt} es obligatorio: el proceso pasa a
+     * {@code PHONE_REQUESTED} con el vencimiento informado. El {@code holdId} puede faltar: la transición no lo usa (el hold
+     * guardado es el de CU-04) y el evento se aplica por {@code reservationProcessId}. El mensaje es para la app y puede faltar.
      */
     record PhoneRequested(String eventId, String reservationProcessId, String holdId, String message, Instant expiresAt) implements ReservationEvent {
         public static final String TYPE = "AdditionalInformationRequested";
@@ -42,7 +43,7 @@ public sealed interface ReservationEvent {
         public PhoneRequested {
             Texts.requireText(eventId, "el eventId");
             Texts.requireText(reservationProcessId, "el reservationProcessId");
-            Texts.requireText(holdId, "el holdId");
+            Texts.optionalText(holdId, "el holdId");
             Texts.optionalText(message, "el mensaje");
             Objects.requireNonNull(expiresAt, "Falta el vencimiento");
         }

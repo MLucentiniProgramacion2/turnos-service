@@ -27,7 +27,7 @@ confirmó inicialmente el hold.
 1. El listener recibe el mensaje (message key = `reservationProcessId`) y lo deserializa, ignorando
    los campos desconocidos (contrato §15.1).
 2. Verifica que tenga `eventId`, `eventType=AdditionalInformationRequested`,
-   `reservationProcessId`, `holdId` y `expiresAt`.
+   `reservationProcessId` y `expiresAt`. El `holdId` puede faltar (2b).
 3. En una transacción:
    1. Verifica que el `eventId` no esté en la tabla de eventos procesados (DPT-15).
    2. Busca el proceso local por `reservationProcessId`.
@@ -43,6 +43,9 @@ confirmó inicialmente el hold.
 
 - **2a. Mensaje mal formado o sin campos obligatorios:** no se reintenta. Se registra en el log y
   se commitea el offset (DPT-22).
+- **2b. Falta el `holdId`:** la transición no lo usa (el hold guardado es el de CU-04), así que no
+  es mal formado: se deja una advertencia y el evento se aplica por `reservationProcessId`, como
+  las degradaciones de CU-07.
 - **3.1a. `eventId` ya procesado** (entrega duplicada): no se repiten efectos y se commitea el
   offset (contrato §18.1).
 - **3.2a. No existe un proceso local con ese `reservationProcessId`** (por ejemplo, después de un
@@ -65,8 +68,9 @@ confirmó inicialmente el hold.
 Detalle técnico en el [ADR 0006](../adr/0006-kafka-en-turnos.md).
 
 - **2a:** el mensaje es mal formado si no se puede leer o si le falta (o está en blanco) `eventId`,
-  `eventType`, `reservationProcessId`, `holdId` o `expiresAt`, o si `expiresAt` no es un instante
-  ISO-8601. Un mal formado no se registra como procesado: no tiene un `eventId` confiable.
+  `eventType`, `reservationProcessId` o `expiresAt`, o si `expiresAt` no es un instante ISO-8601.
+  Un `holdId` ausente o en blanco no lo hace mal formado (2b, corrección de la revisión del #12:
+  antes se descartaba y el pedido se perdía). Un mal formado no se registra como procesado: no tiene un `eventId` confiable.
 - **3.1:** la barrera es "insertar y mirar las filas" (`insert ... on conflict do nothing`), no
   "consultar y después insertar": con dos entregas simultáneas, la segunda espera a la primera.
 - **3.3c:** queda como advertencia en el log (`NOT_FORWARD`); el `requestEventId` guardado sigue siendo

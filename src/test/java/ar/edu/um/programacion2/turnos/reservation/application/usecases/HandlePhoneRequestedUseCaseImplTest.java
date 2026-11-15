@@ -58,6 +58,19 @@ class HandlePhoneRequestedUseCaseImplTest {
     }
 
     @Test
+    void cu05_2a_unPedidoSinHoldIdSeAplicaPorReservationProcessIdYConservaElHoldGuardado() {
+        procesos.put(proceso(ReservationProcessStatus.WAITING_FOR_PHONE_REQUEST));
+
+        EventOutcome resultado = casoDeUso.handle(pedido("request-event-8a31", null));
+
+        assertThat(resultado).isEqualTo(new EventOutcome.Applied(ReservationProcessStatus.WAITING_FOR_PHONE_REQUEST, ReservationProcessStatus.PHONE_REQUESTED));
+        ReservationProcess guardado = procesos.get(id(1));
+        assertThat(guardado.getHold().orElseThrow().holdId()).isEqualTo(holdId(1));
+        assertThat(guardado.getHold().orElseThrow().expiresAt()).isEqualTo(VENCE_NUEVO);
+        assertThat(eventos.registered()).containsKey("request-event-8a31");
+    }
+
+    @Test
     void cu05_3_1a_elMismoEventIdOtraVezNoRepiteEfectos() {
         procesos.put(proceso(ReservationProcessStatus.WAITING_FOR_PHONE_REQUEST));
         casoDeUso.handle(pedido("request-event-8a31", holdId(1)));

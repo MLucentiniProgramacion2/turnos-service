@@ -37,6 +37,31 @@ class ReservationEventMessageMapperTest {
         );
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("pedidosSinHoldId")
+    void unPedidoSinHoldIdSeDegradaYSeAplicaPorReservationProcessId(String caso, String mensaje) {
+        assertThat(ReservationEventMessageMapper.parse(mensaje)).isEqualTo(
+            new ParsedEvent.Event(
+                new ReservationEvent.PhoneRequested(
+                    "request-event-8a31",
+                    "process-a92b47d0",
+                    null,
+                    "Ingrese un numero de telefono para continuar.",
+                    Instant.parse("2026-09-10T14:44:50Z")
+                ),
+                List.of("holdId ausente: se aplica por reservationProcessId")
+            )
+        );
+    }
+
+    static Stream<Arguments> pedidosSinHoldId() {
+        return Stream.of(
+            Arguments.of("sin holdId", PEDIDO.replace("\"holdId\":\"hold-6c0c2f41\",", "")),
+            Arguments.of("holdId en blanco", PEDIDO.replace("\"hold-6c0c2f41\"", "\" \"")),
+            Arguments.of("holdId null", PEDIDO.replace("\"hold-6c0c2f41\"", "null"))
+        );
+    }
+
     @Test
     void sinMensajeOConElMensajeEnBlancoSeLeeIgual() {
         assertThat(ReservationEventMessageMapper.parse(PEDIDO.replace("\"Ingrese un numero de telefono para continuar.\"", "\"  \"")))
@@ -50,7 +75,6 @@ class ReservationEventMessageMapperTest {
             Arguments.of("eventId en blanco", PEDIDO.replace("\"request-event-8a31\"", "\" \""), null, "falta eventId"),
             Arguments.of("sin eventType", PEDIDO.replace("\"eventType\":\"AdditionalInformationRequested\",", ""), "request-event-8a31", "falta eventType"),
             Arguments.of("sin reservationProcessId", PEDIDO.replace("\"reservationProcessId\":\"process-a92b47d0\",", ""), "request-event-8a31", "falta reservationProcessId"),
-            Arguments.of("sin holdId", PEDIDO.replace("\"holdId\":\"hold-6c0c2f41\",", ""), "request-event-8a31", "falta holdId"),
             Arguments.of("sin expiresAt", PEDIDO.replace("\"expiresAt\":\"2026-09-10T14:44:50Z\",", ""), "request-event-8a31", "falta expiresAt o no es un instante ISO-8601"),
             Arguments.of("expiresAt ilegible", PEDIDO.replace("2026-09-10T14:44:50Z", "mañana"), "request-event-8a31", "falta expiresAt o no es un instante ISO-8601"),
             Arguments.of("eventId que no es texto", PEDIDO.replace("\"request-event-8a31\"", "{\"a\":1}"), null, "no es el JSON esperado"),

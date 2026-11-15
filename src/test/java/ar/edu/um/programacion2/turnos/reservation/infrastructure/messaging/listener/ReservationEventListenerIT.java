@@ -152,13 +152,25 @@ class ReservationEventListenerIT {
 
         publicar(PROCESO, "{\"eventId\": rotoInventado");
         publicar(PROCESO, null);
-        publicar(PROCESO, pedido(evento, PROCESO).replace(",\"holdId\":\"hold-6c0c2f41-1\"", ""));
+        publicar(PROCESO, pedido(evento, PROCESO).replace("\"expiresAt\":\"2026-12-14T12:44:50Z\",", ""));
         publicar(PROCESO, pedido(evento, PROCESO));
         esperarQueSeConfirmeTodo();
 
         assertThat(fila()).startsWith("PHONE_REQUESTED|" + evento);
         assertThat(eventos()).containsExactly(evento);
-        assertThat(salida.getAll()).contains("mal formado (no es el JSON esperado)", "mal formado (mensaje vacío)", "mal formado (falta holdId)").doesNotContain("rotoInventado");
+        assertThat(salida.getAll()).contains("mal formado (no es el JSON esperado)", "mal formado (mensaje vacío)", "mal formado (falta expiresAt o no es un instante ISO-8601)").doesNotContain("rotoInventado");
+    }
+
+    @Test
+    void cu05_2b_unPedidoSinHoldIdSeAplicaConUnaAdvertencia(CapturedOutput salida) {
+        String evento = eventoNuevo();
+
+        publicar(PROCESO, pedido(evento, PROCESO).replace(",\"holdId\":\"hold-6c0c2f41-1\"", ""));
+        esperarQueSeConfirmeTodo();
+
+        assertThat(fila()).startsWith("PHONE_REQUESTED|" + evento);
+        assertThat(eventos()).containsExactly(evento);
+        assertThat(salida.getAll()).contains("holdId ausente: se aplica por reservationProcessId; se aplica igual").doesNotContain("mal formado");
     }
 
     @Test
