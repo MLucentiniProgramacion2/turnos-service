@@ -46,6 +46,8 @@ Opcionales, con su valor por defecto:
 | `CATEDRA_CONNECT_TIMEOUT`, `CATEDRA_READ_TIMEOUT` | `2s`, `5s` | Timeouts de la cátedra (DPT-08) |
 | `CATALOGO_CONNECT_TIMEOUT`, `CATALOGO_READ_TIMEOUT` | `2s`, `5s` | Timeouts del catálogo (DPT-13) |
 | `SERVICE_TOKEN_LIFETIME` | `5m` | Vida del token de servicio hacia el catálogo, de `30s` a `5m`; con más, la aplicación no arranca ([ADR 0005](docs/adr/0005-token-de-servicio.md)) |
+| `RESERVATION_TIME_ZONE` | `America/Argentina/Mendoza` | Zona horaria de atención: "hoy" y "ahora" para ofrecer y reservar turnos (DPT-10). Una zona que no existe impide arrancar |
+| `RESERVATION_BOOKING_HORIZON_DAYS` | `60` | Hasta cuántos días adelante se ofrecen turnos, de 1 a 365 |
 
 ## Uso
 
@@ -67,6 +69,14 @@ curl -X POST http://localhost:8080/api/register -H 'Content-Type: application/js
   -d '{"login":"ana.perez","password":"una-clave","firstName":"Ana","lastName":"Pérez","email":"ana@example.com","langKey":"es"}'
 curl -X POST http://localhost:8080/api/authenticate -H 'Content-Type: application/json' \
   -d '{"username":"ana.perez","password":"una-clave"}'   # devuelve {"id_token": "..."}
+```
+
+Turnos disponibles de un profesional (CU-03), con el catálogo levantado y ZeroTier conectado. El
+contrato completo está en [`docs/api-rest.md`](docs/api-rest.md):
+
+```bash
+curl -s "http://localhost:8080/api/professionals/202/availability?from=2026-12-14&to=2026-12-18" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Administrador
