@@ -5,20 +5,13 @@ import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.PhoneSubmissi
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.PhoneSubmissionPublisher;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.PhoneSubmissionUnconfirmedException;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.config.CatedraKafkaProperties;
-import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.DisposableBean;
 import org.springframework.kafka.core.KafkaProducerException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
@@ -35,29 +28,32 @@ import tools.jackson.databind.json.JsonMapper;
  * ({@link CatedraKafkaProperties.Producer#sendTimeout()}) mayor que {@code max.block.ms} + {@code delivery.timeout.ms}:
  * el productor siempre termina el futuro antes, con éxito o con su error. El {@code whenComplete} queda solo para el log.
  * <p>
- * <strong>Antes del primer envío se comprueba que el topic existe</strong> ({@code Admin.describeTopics}, con plazo). El
- * productor no tiene {@code allow.auto.create.topics}: si el broker crea topics solo, un nombre mal configurado crearía
- * uno nuevo, el broker confirmaría y el teléfono se perdería sin ningún error (medido con Testcontainers, ADR 0006). La
- * comprobación no va al arrancar (con Kafka o ZeroTier caídos, turnos tiene que levantar igual) y se recuerda solo si
- * salió bien. Si no se pudo hacer, no se publica.
+ * <strong>No se publica sin haber comprobado que el topic existe</strong> ({@link PhoneTopicCheck}). El productor no
+ * tiene {@code allow.auto.create.topics}: si el broker crea topics solo, un nombre mal configurado crearía uno nuevo, el
+ * broker confirmaría y el teléfono se perdería sin ningún error (medido con Testcontainers, ADR 0006). Normalmente ya la
+ * hizo la comprobación de fondo del arranque; si todavía no salió bien, el envío la espera con el plazo del usuario (5 s).
+ * Si no se pudo hacer, no se publica.
  * <p>
  * El teléfono y el cuerpo del evento nunca van al log.
  */
 @Component
-public class KafkaPhoneSubmissionPublisher implements PhoneSubmissionPublisher, DisposableBean {
+public class KafkaPhoneSubmissionPublisher implements PhoneSubmissionPublisher {
 
     private static final Logger LOG = LoggerFactory.getLogger(KafkaPhoneSubmissionPublisher.class);
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final KafkaTemplate<String, String> template;
     private final CatedraKafkaProperties properties;
+    private final PhoneTopicCheck topicCheck;
 
-    private Admin admin;
-    private volatile boolean topicChecked;
-
-    public KafkaPhoneSubmissionPublisher(KafkaTemplate<String, String> phoneKafkaTemplate, CatedraKafkaProperties properties) {
+    public KafkaPhoneSubmissionPublisher(
+        KafkaTemplate<String, String> phoneKafkaTemplate,
+        CatedraKafkaProperties properties,
+        PhoneTopicCheck topicCheck
+    ) {
         this.template = phoneKafkaTemplate;
         this.properties = properties;
+        this.topicCheck = topicCheck;
     }
 
     @Override
@@ -111,52 +107,19 @@ public class KafkaPhoneSubmissionPublisher implements PhoneSubmissionPublisher, 
         );
     }
 
-    /**
-     * Comprueba una vez que el topic de teléfono existe. Solo se recuerda el éxito: si el broker estaba caído, la próxima
-     * vez se vuelve a comprobar. Está sincronizado para que dos envíos simultáneos no abran dos clientes.
-     */
-    private synchronized void ensureTopicExists() {
-        if (topicChecked) {
-            return;
-        }
-        String topic = properties.getPhoneTopic();
-        Duration timeout = properties.getProducer().getTopicCheckTimeout();
+    /** Si la comprobación de fondo todavía no salió bien, la espera con el plazo del usuario. */
+    private void ensureTopicExists() {
         try {
-            admin().describeTopics(List.of(topic)).allTopicNames().get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            topicChecked = true;
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof UnknownTopicOrPartitionException) {
+            topicCheck.ensureChecked(properties.getProducer().getTopicCheckTimeout());
+        } catch (PhoneTopicCheckException e) {
+            if (e.topicMissing()) {
                 // Error de configuración nuestro: el nombre de CATEDRA_KAFKA_PHONE_TOPIC no es el de la cátedra.
                 LOG.error("El topic de teléfono configurado no existe en el broker; revisar CATEDRA_KAFKA_PHONE_TOPIC. No se publica");
                 throw new PhoneSubmissionNotSentException("El topic de teléfono no existe", e.getCause());
             }
-            LOG.warn("No se pudo comprobar el topic de teléfono ({}): no se publica", describe(e.getCause()));
+            LOG.warn("No se pudo comprobar el topic de teléfono ({}): no se publica", e.reason());
             throw new PhoneSubmissionNotSentException("No se pudo comprobar el topic de teléfono", e.getCause());
-        } catch (TimeoutException e) {
-            LOG.warn("No se pudo comprobar el topic de teléfono en {} ms: no se publica", timeout.toMillis());
-            throw new PhoneSubmissionNotSentException("No se pudo comprobar el topic de teléfono a tiempo", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new PhoneSubmissionNotSentException("Se interrumpió la comprobación del topic de teléfono", e);
         }
-    }
-
-    /** El cliente de administración se crea con el primer envío, no al arrancar: crearlo no conecta, pero no hace falta antes. */
-    private Admin admin() {
-        if (admin == null) {
-            int timeout = Math.toIntExact(properties.getProducer().getTopicCheckTimeout().toMillis());
-            admin = Admin.create(
-                Map.of(
-                    AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,
-                    properties.getBootstrapServers(),
-                    AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG,
-                    timeout,
-                    AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG,
-                    timeout
-                )
-            );
-        }
-        return admin;
     }
 
     private static PhoneSubmissionUnconfirmedException unconfirmed(PhoneSubmission submission, Throwable failure) {
@@ -177,12 +140,5 @@ public class KafkaPhoneSubmissionPublisher implements PhoneSubmissionPublisher, 
     static String describe(Throwable failure) {
         Throwable real = failure instanceof KafkaProducerException && failure.getCause() != null ? failure.getCause() : failure;
         return real.getMessage() == null ? real.getClass().getName() : real.getClass().getName() + ": " + real.getMessage();
-    }
-
-    @Override
-    public synchronized void destroy() {
-        if (admin != null) {
-            admin.close(Duration.ofSeconds(1));
-        }
     }
 }

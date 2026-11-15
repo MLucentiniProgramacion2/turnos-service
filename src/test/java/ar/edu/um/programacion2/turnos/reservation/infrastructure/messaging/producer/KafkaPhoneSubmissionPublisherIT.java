@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.admin.Admin;
@@ -38,8 +39,8 @@ import org.testcontainers.kafka.KafkaContainer;
 
 /**
  * El productor de CU-06 contra brokers reales (Testcontainers), sin contexto de Spring. Además de comprobar el evento
- * publicado, <strong>mide</strong> qué pasa en cada falla con los plazos reales (2 s, 3 s y 5 s): qué excepción llega y
- * cuánto tarda. Los resultados están en el ADR 0006.
+ * publicado, <strong>mide</strong> qué pasa en cada falla con los plazos reales (2 s, 3 s y 5 s del productor; 5 s de la
+ * comprobación del topic con el usuario esperando): qué excepción llega y cuánto tarda. Los resultados están en el ADR 0006.
  * <p>
  * Hay un segundo broker con {@code auto.create.topics.enable=false}, como suelen estar los de producción, y es el que se
  * pausa para simular un broker que no confirma: así el compartido no se toca.
@@ -50,8 +51,12 @@ class KafkaPhoneSubmissionPublisherIT {
     private static final String TELEFONO = "+5492615551234";
     private static final KafkaContainer SIN_AUTOCREACION = iniciarSinAutocreacion();
 
+    /** Las comprobaciones creadas: cada una tiene su hilo y, hasta el éxito, su {@code Admin}. */
+    private static final List<PhoneTopicCheck> CREADAS = new CopyOnWriteArrayList<>();
+
     @AfterAll
     static void detener() {
+        CREADAS.forEach(PhoneTopicCheck::destroy);
         SIN_AUTOCREACION.stop();
     }
 
@@ -71,7 +76,29 @@ class KafkaPhoneSubmissionPublisherIT {
                 "\"information\":{\"phoneNumber\":\"+5492615551234\"},\"occurredAt\":\"2026-09-10T14:36:00Z\",\"schemaVersion\":1}"
         );
         assertThat(salida.getAll()).contains("AdditionalInformationSubmitted phone-submitted-b91e publicado").doesNotContain("5551234");
-        productor.destroy();
+    }
+
+    /**
+     * La comprobación de fondo del arranque (comprobación manual del #12): cuando terminó bien, el primer envío ya no
+     * describe el topic, y el {@code Admin} queda cerrado. El listener del arranque se llama a mano, como lo haría Spring.
+     */
+    @Test
+    void cu06_despuesDelArranqueElPrimerEnvioNoVuelveADescribirElTopic(CapturedOutput salida) throws Exception {
+        String topic = KafkaTestBroker.createTopic("catedra.turnos.telefono.test-");
+        CatedraKafkaProperties properties = propiedades(KafkaTestBroker.bootstrapServers(), topic);
+        PhoneTopicCheck comprobacion = new PhoneTopicCheck(properties);
+        KafkaPhoneSubmissionPublisher productor = productor(properties, comprobacion);
+
+        comprobacion.onApplicationReady();
+        comprobacion.firstBackgroundAttempt().get(10, TimeUnit.SECONDS);
+        assertThat(comprobacion.isChecked()).isTrue();
+        assertThat(comprobacion.describeRequests()).isEqualTo(1);
+
+        productor.publish(envio("phone-submitted-arranque"));
+
+        assertThat(comprobacion.describeRequests()).isEqualTo(1);
+        assertThat(leerUno(KafkaTestBroker.bootstrapServers(), topic).key()).isEqualTo("process-a92b47d0");
+        assertThat(salida.getAll()).contains("Topic de teléfono comprobado (1 pedido(s) al broker)");
     }
 
     /**
@@ -98,7 +125,6 @@ class KafkaPhoneSubmissionPublisherIT {
 
         assertThat(topics(KafkaTestBroker.bootstrapServers())).doesNotContain(malEscrito);
         assertThat(salida.getAll()).contains("El topic de teléfono configurado no existe en el broker");
-        productor.destroy();
     }
 
     /** Medido: sin comprobación y sin autocreación, {@code send} bloquea {@code max.block.ms} y falla con un timeout de Kafka. */
@@ -129,12 +155,11 @@ class KafkaPhoneSubmissionPublisherIT {
         assertThatThrownBy(() -> productor.publish(envio("e-1"))).isInstanceOf(PhoneSubmissionNotSentException.class);
         long primera = milisegundosDesde(inicio);
 
-        // Solo se recuerda el éxito: la segunda vez se vuelve a comprobar.
+        // Solo se recuerda el éxito: la segunda vez se vuelve a esperar (el mismo pedido, que sigue en vuelo, o uno nuevo).
         inicio = System.nanoTime();
         assertThatThrownBy(() -> productor.publish(envio("e-2"))).isInstanceOf(PhoneSubmissionNotSentException.class);
-        assertThat(primera).isBetween(1_900L, 4_000L);
-        assertThat(milisegundosDesde(inicio)).isBetween(1_900L, 4_000L);
-        productor.destroy();
+        assertThat(primera).isBetween(4_900L, 7_000L);
+        assertThat(milisegundosDesde(inicio)).isBetween(4_900L, 7_000L);
     }
 
     /**
@@ -164,7 +189,6 @@ class KafkaPhoneSubmissionPublisherIT {
             .contains("org.apache.kafka.common.errors.TimeoutException")
             .doesNotContain("5551234");
         System.out.println("MEDIDO broker pausado: resultado desconocido a los " + milisegundos + " ms");
-        productor.destroy();
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -182,14 +206,28 @@ class KafkaPhoneSubmissionPublisherIT {
         );
     }
 
-    /** El adaptador con los beans y los plazos reales, sin Spring. */
+    /** El adaptador con los beans y los plazos reales, sin Spring y sin la comprobación de fondo. */
     private static KafkaPhoneSubmissionPublisher productor(String bootstrap, String topic) {
+        CatedraKafkaProperties properties = propiedades(bootstrap, topic);
+        return productor(properties, new PhoneTopicCheck(properties));
+    }
+
+    private static KafkaPhoneSubmissionPublisher productor(CatedraKafkaProperties properties, PhoneTopicCheck comprobacion) {
+        CatedraKafkaProducerConfiguration configuracion = new CatedraKafkaProducerConfiguration();
+        CREADAS.add(comprobacion);
+        return new KafkaPhoneSubmissionPublisher(
+            configuracion.phoneKafkaTemplate(configuracion.phoneProducerFactory(properties)),
+            properties,
+            comprobacion
+        );
+    }
+
+    private static CatedraKafkaProperties propiedades(String bootstrap, String topic) {
         CatedraKafkaProperties properties = new CatedraKafkaProperties();
         properties.setBootstrapServers(bootstrap);
         properties.setPhoneTopic(topic);
         properties.setGroupId("proyecto-de-prueba");
-        CatedraKafkaProducerConfiguration configuracion = new CatedraKafkaProducerConfiguration();
-        return new KafkaPhoneSubmissionPublisher(configuracion.phoneKafkaTemplate(configuracion.phoneProducerFactory(properties)), properties);
+        return properties;
     }
 
     private static KafkaProducer<String, String> productorCrudo(String bootstrap) {

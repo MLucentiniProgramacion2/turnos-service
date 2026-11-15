@@ -106,6 +106,10 @@ catedra:
     phone-topic: topic-de-telefono-de-test
     group-id: group-id-de-test
     listener-enabled: false
+    producer:
+      # Apagada por lo mismo que el listener: cada contexto intentaría describir el topic en un broker que no existe.
+      # La prenden solo sus tests.
+      background-topic-check-enabled: false
 
 catalogo:
   api:

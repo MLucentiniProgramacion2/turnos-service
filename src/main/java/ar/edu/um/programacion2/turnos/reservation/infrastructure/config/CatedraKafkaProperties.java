@@ -97,7 +97,12 @@ public class CatedraKafkaProperties {
      * <li>{@code delivery.timeout.ms}: cuánto puede tardar la confirmación desde que el registro entra al buffer, con los
      * reintentos de Kafka incluidos. Kafka exige que sea al menos {@code linger.ms} + {@code request.timeout.ms}, o el
      * productor no se construye; {@code linger.ms} es 0.</li>
-     * <li>{@code topic-check-timeout}: el plazo de la comprobación de que el topic existe, antes del primer envío.</li>
+     * <li>{@code topic-check-timeout}: cuánto espera un envío, con el usuario esperando, la comprobación de que el topic
+     * existe, mientras la de fondo no salió bien. 5 s, el plazo de lectura de DPT-08: en frío y por ZeroTier, describir el
+     * topic tardó de 1,9 a 5,1 s (comprobación manual del #12), así que con 2 s fallaba casi siempre.</li>
+     * <li>{@code background-topic-check-*}: la comprobación de fondo al terminar el arranque (ADR 0006). Plazo de 15 s,
+     * unas 3 veces el peor caso medido que respondió, porque nadie espera; si falla, se reintenta cada 30 s hasta que salga
+     * bien. Solo se apaga en {@code src/test}, como el listener.</li>
      * </ul>
      */
     @Getter
@@ -119,7 +124,17 @@ public class CatedraKafkaProperties {
 
         @NotNull
         @DurationMin(millis = 100)
-        private Duration topicCheckTimeout = Duration.ofSeconds(2);
+        private Duration topicCheckTimeout = Duration.ofSeconds(5);
+
+        private boolean backgroundTopicCheckEnabled = true;
+
+        @NotNull
+        @DurationMin(millis = 100)
+        private Duration backgroundTopicCheckTimeout = Duration.ofSeconds(15);
+
+        @NotNull
+        @DurationMin(millis = 100)
+        private Duration backgroundTopicCheckInterval = Duration.ofSeconds(30);
 
         /** La regla de Kafka, validada al arrancar en vez de fallar al construir el productor en el primer envío. */
         @AssertTrue(message = "delivery-timeout tiene que ser mayor o igual que request-timeout (linger.ms es 0)")

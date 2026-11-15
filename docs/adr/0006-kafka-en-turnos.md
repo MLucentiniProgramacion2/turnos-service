@@ -198,23 +198,80 @@ En el Tema 13 el productor usa `whenComplete` y sigue. Acá eso no alcanza: el c
 `PHONE_SUBMITTED` solo si el broker confirmó, y tiene que responderle al usuario si se envió. Se espera
 el `CompletableFuture` con `get(8 s)`. El `whenComplete` queda solo para el log del éxito.
 
-### Comprobar el topic antes del primer envío
+### Comprobar el topic: de fondo al arrancar, y antes del envío mientras tanto
 
 El productor no tiene `allow.auto.create.topics` (es del consumidor). **Medido con Testcontainers:** en
 un broker que crea topics solo (el valor por defecto), publicar en un nombre mal escrito **confirma**
-y crea el topic. El teléfono se perdería sin ningún error.
+y crea el topic. El teléfono se perdería sin ningún error. Por eso no se publica sin haber comprobado,
+con `Admin.describeTopics`, que el topic existe. Lo hace `PhoneTopicCheck`, por dos caminos:
 
-Por eso, antes del primer envío, `Admin.describeTopics` con un plazo de 2 s:
+- **De fondo, al terminar el arranque** (`ApplicationReadyEvent`), con un plazo de **15 s**. Si falla,
+  **se reintenta cada 30 s hasta que salga bien**, sin límite de tiempo. Nunca bloquea ni impide el
+  arranque: el listener solo programa la tarea en un hilo propio y vuelve, así que con Kafka o
+  ZeroTier caídos turnos levanta igual (enunciado §8). Deja un WARN por la primera falla y después
+  DEBUG. Si el topic no existe, deja el mismo ERROR de configuración que el envío.
+- **Antes de un envío, mientras la de fondo no salió bien**, con un plazo de **5 s**, el de lectura
+  de DPT-08, porque el usuario está esperando. Si no se pudo comprobar o el topic no existe, no se
+  publica (`503`, el proceso no cambia).
 
-- **nunca al arrancar:** con Kafka o ZeroTier caídos, turnos levanta igual (enunciado §8);
-- **se recuerda solo si salió bien:** si el broker estaba caído, el próximo envío vuelve a comprobar;
-- **si no se pudo comprobar o el topic no existe, no se publica** (`503`, el proceso no cambia).
+**Que no se pisen:** hay a lo sumo un `describeTopics` en vuelo, y cada camino lo espera **fuera del
+lock** con su propio plazo. Un envío nunca espera los 15 s de la de fondo: espera el mismo pedido 5 s.
+Un pedido que termina bien cuando nadie lo esperaba también cuenta: el próximo que pasa lo da por
+comprobado sin pedir otro. Solo se recuerda el éxito. Con el éxito se cierra el `Admin`, que no se
+vuelve a usar.
 
-El plazo de la comprobación entra en el presupuesto de CU-06 solo hasta el primer éxito: 2 + 8 s en
-el peor caso.
+**Un hilo propio y no el `taskExecutor`** (el que usa el arranque del catálogo), por tres motivos:
+- los reintentos necesitan una espera programada, que ese executor no tiene;
+- el `taskScheduler` de `@EnableScheduling` no existe en los perfiles de test;
+- en los tests el `taskExecutor` es sincrónico, así que no se podría probar que el arranque no espera.
+
+El hilo es `daemon` y se apaga con el contexto.
+
+#### Por qué estos plazos: la comprobación manual del #12
+
+El primer teléfono después del arranque falló con `503 PHONE_SUBMISSION_UNCONFIRMED`. El `Admin` se
+creaba con ese envío, y en los 2 s que tenía la comprobación no llegó a conectarse por ZeroTier
+(entre 200 y 290 ms por viaje): `Timed out waiting to send the call. Call: listNodes`. Tres minutos
+después, el reintento publicó. `PhoneTopicCheckManualCheck` lo midió contra el broker real, en dos
+corridas, con un `Admin` nuevo por intento y un plazo de 15 s:
+
+| Medición | En frío | Ya conectado |
+| --- | --- | --- |
+| `Admin.describeTopics`, corrida 1 (3 de 5 intentos: el timeout global de JUnit cortó el cuarto) | 5080, 2931 y 2594 ms | 534, 506 y 1135 ms |
+| `Admin.describeTopics`, corrida 2 | **sin respuesta en 15 s** (`listNodes`); 2565, 3991, 1933 y 1973 ms | 1256, 599, 1761 y 506 ms |
+| `KafkaProducer.partitionsFor`, corrida 2, después del `Admin` (sin publicar) | 772 a 928 ms, los 5 | — |
+
+- **La de fondo, 15 s:** es unas 3 veces el peor caso que respondió (5,1 s). Nadie la espera, así que
+  puede ser larga. El intento que no respondió ni en 15 s muestra por qué hacen falta los reintentos:
+  el primer contacto puede no llegar (ZeroTier armando el camino) y el siguiente anduvo.
+- **La del envío, 5 s:** con 2 s fallaba en frío la mayoría de las veces (5 de los 7 intentos que respondieron
+  tardaron más), y ya conectado llegó a 1,76 s. 5 s es el plazo de lectura de DPT-08. En frío puede
+  no alcanzar (5,1 s), pero normalmente la de fondo ya terminó antes del primer teléfono.
+- **El productor no se calienta:** en frío trajo los metadatos del topic en menos de 1 s, con margen
+  sobre `max.block.ms` (2 s). Se midió **después** de la comprobación del `Admin`, con ZeroTier ya
+  despierto, que es el mismo orden que tiene en producción gracias a la comprobación de fondo.
+- **Por qué el `Admin` tarda más que el productor:** en parte porque hace más pedidos. El error de la
+  comprobación manual nombra `listNodes`, que el `Admin` pide antes de la descripción; el productor
+  pide solo los metadatos del topic. Eso suma viajes de 250 ms, pero no explica toda la diferencia
+  (de 2 a 5 s contra menos de 1 s). Además, el productor se midió con el camino de ZeroTier ya
+  despierto. Cuánto pesa cada cosa: **no medido**.
+
+#### El presupuesto de CU-06 con el usuario esperando
+
+| Tramo | Plazo |
+| --- | --- |
+| Comprobación del topic (solo mientras la de fondo no salió bien) | 5 s |
+| Plazo del futuro del envío (`max.block.ms` 2 s + `delivery.timeout.ms` 5 s + 1 s) | 8 s |
+| **Peor caso antes del primer éxito** | **13 s** (antes, 2 + 8 = 10 s) |
+| **Peor caso después del primer éxito** (lo normal) | **8 s** |
+
+A eso se suman las lecturas y los guardados del proceso en la base, que son locales. Las dos
+desigualdades de arriba no cambian: la comprobación termina antes del envío, y el futuro sigue
+esperando más que `max.block.ms` + `delivery.timeout.ms`.
 
 Contra el broker de la cátedra no se probó ningún nombre que no sea el real: el comportamiento con
-`auto.create.topics.enable` se midió solo con Testcontainers.
+`auto.create.topics.enable` se midió solo con Testcontainers. La comprobación manual solo describe el
+topic real y pide `partitionsFor` después de confirmar que existe; no publica.
 
 ### Lo medido (`KafkaPhoneSubmissionPublisherIT`, `apache/kafka-native:4.1.0`)
 
@@ -224,7 +281,8 @@ Contra el broker de la cátedra no se probó ningún nombre que no sea el real: 
 | Sin comprobar, topic mal escrito, broker que crea topics | **confirmación**: el topic se crea | 1,6 s |
 | Con la comprobación, topic que no existe | `PhoneSubmissionNotSentException`; el topic no se crea | — |
 | Sin comprobar, topic que no existe, broker que no crea topics | `TimeoutException`: "Topic ... not present in metadata after 2000 ms" | 2,0 s |
-| Broker caído (puerto cerrado) | `PhoneSubmissionNotSentException` (el `Admin` no consigue un nodo) | ~2,2 s, también la segunda vez |
+| Broker caído (puerto cerrado) | `PhoneSubmissionNotSentException` (el `Admin` no consigue un nodo) | el plazo del envío, 5 s (el test lo acota entre 4,9 y 7 s), también la segunda vez; con 2 s eran ~2,2 s |
+| Comprobación de fondo terminada | el primer envío no vuelve a describir el topic (1 solo pedido) | — |
 | Broker pausado después de comprobar (no confirma) | `PhoneSubmissionUnconfirmedException` ← `TimeoutException`: "Expiring 1 record(s) ... 5002 ms has passed since batch creation" | 5,04 s, antes del plazo de 8 s |
 
 ### El teléfono fuera del log
@@ -253,3 +311,11 @@ Contra el broker de la cátedra no se probó ningún nombre que no sea el real: 
 - **Consultar y después insertar el `eventId`:** ver "la idempotencia".
 - **Un listener por tipo de evento:** seis copias de la barrera y la búsqueda, y el mismo topic leído
   seis veces.
+- **Comprobar el topic durante el arranque, esperándola:** con Kafka o ZeroTier caídos, turnos no
+  levantaría o tardaría 15 s en estar listo (§8).
+- **Solo subir el plazo del envío, sin comprobación de fondo:** el primer teléfono pagaría la conexión
+  en frío (de 2 a 5 s, y a veces más de 15) con el usuario esperando.
+- **Un intento de fondo sin reintentos:** un arranque con la red caída volvería al problema de la
+  comprobación manual del #12.
+- **Calentar también el productor:** medido, en frío tarda menos de 1 s, con margen sobre
+  `max.block.ms`.
