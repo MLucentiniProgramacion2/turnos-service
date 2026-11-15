@@ -76,12 +76,42 @@ curl -X POST http://localhost:8080/api/authenticate -H 'Content-Type: applicatio
   -d '{"username":"ana.perez","password":"una-clave"}'   # devuelve {"id_token": "..."}
 ```
 
-Turnos disponibles de un profesional (CU-03), con el catálogo levantado y ZeroTier conectado. El
-contrato completo está en [`docs/api-rest.md`](docs/api-rest.md):
+### La reserva
+
+Con el catálogo levantado (puerto 8081) y ZeroTier conectado. El contrato completo, con cada `code`
+de error, está en [`docs/api-rest.md`](docs/api-rest.md).
+
+| Endpoint | Caso de uso | Respuesta |
+| --- | --- | --- |
+| `GET /api/professionals/{id}/availability?from=&to=` | CU-03 | turnos libres por día (hasta 7 días, hasta hoy + 60) |
+| `POST /api/reservation-processes` | CU-04 | `202` con el proceso; `200` si el mismo turno ya estaba en curso |
+| `POST /api/reservation-processes/{id}/phone` | CU-06 | `202` con el proceso en `PHONE_SUBMITTED` |
+
+El pedido de teléfono (CU-05) y el resultado (CU-07) llegan por Kafka: no tienen endpoint. Para no
+dejar el token en el historial de la terminal, se guarda en una variable sin mostrarlo:
 
 ```bash
+read -r -s -p 'Clave: ' CLAVE; echo
+TOKEN=$(jq -n --arg u ana.perez --arg p "$CLAVE" '{username:$u,password:$p}' \
+  | curl -s -X POST http://localhost:8080/api/authenticate -H 'Content-Type: application/json' -d @- | jq -r .id_token)
+unset CLAVE
 curl -s "http://localhost:8080/api/professionals/202/availability?from=2026-12-14&to=2026-12-18" \
-  -H "Authorization: Bearer $TOKEN"
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+### Un usuario trabado en una reserva en curso
+
+Mientras no exista la reconciliación (CU-11, otro issue), un proceso que quedó en un estado intermedio
+(por ejemplo, `HOLD_CREATED` porque el confirm no respondió, o porque se perdió un evento) impide al
+usuario iniciar otra reserva (índice único parcial, DPT-17). Se destraba a mano, pasándolo a `FAILED`
+**después de comprobar en la cátedra** (`GET /api/appointments`) que ese proceso no quedó confirmado:
+
+```bash
+docker exec -it turnos-db psql -U turnos_app -d turnos -c \
+  "UPDATE reservation_process SET status = 'FAILED', closing_reason = 'MANUAL_UNLOCK',
+     status_changed_at = now(), version = version + 1
+   WHERE id = '<id del proceso>' AND status IN ('CREATING_HOLD', 'HOLD_CREATED', 'WAITING_FOR_PHONE_REQUEST',
+     'PHONE_REQUESTED', 'PHONE_SUBMITTED', 'PHONE_REJECTED');"
 ```
 
 ## Administrador
@@ -117,7 +147,11 @@ feature `reservation`, con changelogs propios en `config/liquibase/changelog/res
   - **Índice único parcial** `uq_reservation_process_one_intermediate_per_user`: un solo proceso
     intermedio por usuario (DPT-17).
 - **`processed_event`**: los `eventId` de los eventos de Kafka ya procesados, como clave primaria
-  (DPT-15).
+  (DPT-15). Se escriben con `insert ... on conflict do nothing`, en la misma transacción que el cambio
+  de estado ([ADR 0006](docs/adr/0006-kafka-en-turnos.md)).
+
+Turnos **no guarda el catálogo**: la agenda se pide al servicio de catálogo en cada consulta (CU-03) y
+en cada reserva (CU-04). Del profesional solo quedan los datos históricos del proceso, para mostrar.
 
 Estados del proceso (DPT-05, diagrama en [`docs/use-cases/README.md`](docs/use-cases/README.md)):
 
@@ -133,8 +167,16 @@ Estados del proceso (DPT-05, diagrama en [`docs/use-cases/README.md`](docs/use-c
 ./mvnw test -Dtest=NombreTest  # un test unitario
 ```
 
-Los tests de integración levantan su propio PostgreSQL con Testcontainers, así que Docker tiene que
-estar corriendo. No usan el `.env`: el perfil de test tiene una clave JWT fija.
+Los tests de integración levantan su propio PostgreSQL y sus brokers de Kafka con Testcontainers,
+así que Docker tiene que estar corriendo. No usan el `.env`: el perfil de test tiene una clave JWT fija
+y nombres de topics inventados. Los de Kafka miden plazos reales (hasta 8 s) y uno pausa su propio
+broker con `docker pause`.
+
+Para correr un test de integración suelto con la misma configuración que `verify`:
+
+```bash
+./mvnw test -Dtest=NombreIT -Dspring.profiles.active=test,testdev
+```
 
 ### Comprobaciones manuales
 
