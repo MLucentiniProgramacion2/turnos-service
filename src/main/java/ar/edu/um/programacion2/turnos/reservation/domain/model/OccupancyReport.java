@@ -11,4 +11,14 @@ public record OccupancyReport(long professionalId, LocalDate from, LocalDate to,
         Objects.requireNonNull(to, "Falta la fecha hasta");
         occupancies = List.copyOf(Objects.requireNonNull(occupancies, "Faltan las ocupaciones"));
     }
+
+    /**
+     * Si el turno figura como no disponible (CU-03 paso 7): hay una ocupación con su misma fecha y hora de inicio, sea
+     * {@code HELD} o {@code CONFIRMED}. Se comparan las horas ya convertidas, así {@code 09:30} y {@code 09:30:00} son la
+     * misma. Una ocupación que no coincide con el inicio de ningún turno no ocupa nada.
+     */
+    public boolean isOccupied(AppointmentSlot slot) {
+        Objects.requireNonNull(slot, "Falta el turno");
+        return occupancies.stream().anyMatch(occupancy -> occupancy.date().equals(slot.date()) && occupancy.startTime().equals(slot.startTime()));
+    }
 }

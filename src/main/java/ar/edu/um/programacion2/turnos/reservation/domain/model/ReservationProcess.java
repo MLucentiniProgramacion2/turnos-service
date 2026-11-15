@@ -400,6 +400,29 @@ public class ReservationProcess {
     }
 
     // ---------------------------------------------------------------------------------------------------------------
+    // Consultas
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /**
+     * Si el proceso acepta el teléfono en ese instante (CU-06). Primero el estado y después el plazo: un proceso
+     * {@code CONFIRMED} con el hold vencido está cerrado, no vencido. {@code expiresAt} es exclusivo: en el instante exacto
+     * del vencimiento ya no se acepta (conservar el proceso no extiende el hold, contrato §9).
+     */
+    public PhoneSubmissionCheck canSubmitPhone(Instant now) {
+        requireNow(now);
+        if (status.isFinal() || status == CONFIRMED) {
+            return PhoneSubmissionCheck.CLOSED;
+        }
+        if (WITHOUT_PHONE_REQUEST.contains(status)) {
+            return PhoneSubmissionCheck.NOT_REQUESTED_YET;
+        }
+        if (status == PHONE_SUBMITTED) {
+            return PhoneSubmissionCheck.ALREADY_SUBMITTED;
+        }
+        return now.isBefore(hold.expiresAt()) ? PhoneSubmissionCheck.ALLOWED : PhoneSubmissionCheck.DEADLINE_PASSED;
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
     // Lectura
     // ---------------------------------------------------------------------------------------------------------------
 

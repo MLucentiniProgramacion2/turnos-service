@@ -1,0 +1,34 @@
+package ar.edu.um.programacion2.turnos.reservation.infrastructure.messaging.listener;
+
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationEvent;
+import java.util.List;
+
+/**
+ * Lo que sale de leer un mensaje del topic de acciones. Es {@code sealed}: el listener decide con un {@code switch}
+ * completo qué hace con cada caso. Solo {@link Event} llega a un caso de uso; los demás se confirman sin reintento
+ * (DPT-22) y sin registrar el {@code eventId}.
+ */
+sealed interface ParsedEvent {
+    /**
+     * Un evento válido de un tipo que turnos procesa.
+     *
+     * @param degradations los datos que faltaban o no se podían leer y se reemplazaron (por ejemplo, un {@code occurredAt}
+     *     ilegible por el reloj): el evento se aplica igual y cada uno queda como advertencia en el log
+     */
+    record Event(ReservationEvent event, List<String> degradations) implements ParsedEvent {
+        public Event {
+            degradations = List.copyOf(degradations);
+        }
+    }
+
+    /** Un {@code eventType} que el contrato v1 no define. */
+    record UnknownType(String eventId) implements ParsedEvent {}
+
+    /**
+     * Ilegible, vacío o sin un dato sin el que la transición no se puede aplicar. {@code detail} dice qué falta, sin
+     * repetir ningún valor del mensaje.
+     *
+     * @param eventId el {@code eventId}, si se pudo leer; si no, {@code null}
+     */
+    record Malformed(String eventId, String detail) implements ParsedEvent {}
+}

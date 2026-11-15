@@ -73,6 +73,33 @@ nota de la máquina de estados en el [README](README.md#máquina-de-estados-del-
   registra el error y se commitea el offset; el proceso queda en su estado y lo recupera CU-11
   (DPT-22, DPT-09).
 
+## Notas de implementación (issue #12)
+
+Detalle técnico en el [ADR 0006](../adr/0006-kafka-en-turnos.md).
+
+- **Un evento, una transición del modelo:** `AppointmentConfirmed` → `confirmed`,
+  `AdditionalInformationRejected` → `phoneRejected`, `AppointmentProcessExpired` → `expired`,
+  `AppointmentProcessInvalid` → `invalid`, `AppointmentCancelled` → `cancelled` (no
+  `cancelledByReconciliation`, que es de CU-09 y CU-11). El caso de uso no pregunta por estados: el
+  modelo devuelve "aplicado" o "sin efecto" con su motivo.
+- **1a, qué es mal formado:** solo lo que la transición necesita: `eventId`, `eventType`,
+  `reservationProcessId`, y el `reservationId` positivo de `AppointmentConfirmed`. Lo demás se degrada
+  con una advertencia en vez de descartar el resultado (sin CU-11, se perdería):
+  - `occurredAt` ausente o ilegible: el instante del reloj;
+  - `reason` ausente o en blanco en un rechazo, vencimiento o invalidez: `UNSPECIFIED`;
+  - `expiresAt` ausente o ilegible en un rechazo: se conserva el guardado;
+  - `reason` de una cancelación de más de 500 caracteres: se recorta a 500.
+- **Datos que se guardan:** `confirmedAt` y `cancelledAt` son el `occurredAt` del evento (cuándo pasó
+  en la cátedra), no el reloj de turnos. El `reason` de vencido e inválido es un código de la cátedra
+  y se guarda tal cual, sin enum: el contrato no cierra la lista.
+- **`holdId` o `requestEventId` distinto del guardado:** se aplica igual por `reservationProcessId`,
+  que es la clave, con una advertencia. Un `requestEventId` distinto es justo lo que la cátedra informa
+  como `REQUEST_EVENT_MISMATCH`.
+- **Log:** WARN en 2.2a, 2.3b (inválido sobre `CONFIRMED`), 2.3c y 2.3e; INFO para lo normal
+  (aplicado, duplicado, tardío sobre un final o un confirmado). La tabla está en el ADR 0006.
+- **Orden REST/Kafka:** no se agregó ninguna suposición de orden. La carrera con CU-06 (7a) se probó en
+  los dos órdenes: el que pierde por `@Version` relee y vuelve a aplicar.
+
 ## Postcondiciones
 
 - **De éxito:** el proceso refleja el resultado informado por la cátedra y el `eventId` quedó

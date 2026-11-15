@@ -125,6 +125,78 @@ En la pantalla de resumen de la app, el usuario toca "Reservar" sobre un turno e
   `AppointmentProcessExpired`): el `202` no lo modifica (DPT-05). Se responde con el estado
   actual.
 
+## Notas de implementación (issue #12)
+
+Contrato REST: [`api-rest.md`](../api-rest.md#cu-04-iniciar-una-reserva).
+
+- **Orden:** los pasos 3 y 4 (pedido repetido) y la lectura del perfil se hacen en una transacción
+  corta **antes** de llamar al catálogo. Repetir un pedido responde `200` aunque el catálogo esté
+  caído.
+- **Transacciones cortas, HTTP afuera:** cada guardado (pasos 7, 10 y 13) es su propia transacción y
+  ningún `POST` va adentro de una. Los guardados posteriores al alta releen el proceso, aplican la
+  transición y, si chocan con el bloqueo optimista, reintentan hasta 3 veces: así se resuelven 13a y
+  13b sin mirar el estado.
+- **Hora del pedido:** con segundos o fracciones distintos de cero responde `400` (la cátedra recibe
+  `HH:mm`).
+- **El usuario del token ya no existe:** `401`. **El nombre del perfil no sirve como paciente** (no
+  debería pasar por DPT-02): `409`.
+- **8a bis. No se pudo conectar con la cátedra al crear el hold:** el hold no se creó. El proceso
+  pasa igual a `FAILED` (motivo `HOLD_NOT_SENT`), para dejar registro y liberar al usuario, y se
+  responde `503`. No se borra: la máquina de estados no tiene esa operación y el `CHECK` admite un
+  `FAILED` sin hold.
+
+### Fallas de la cátedra: tabla completa
+
+Las cinco fallas del puerto, en las dos operaciones. "Motivo" es lo que queda en `closing_reason`.
+
+**Crear el hold** (el proceso está en `CREATING_HOLD`; el `POST` nunca se repite):
+
+| Falla | Proceso (motivo) | HTTP | `code` |
+| --- | --- | --- | --- |
+| No se pudo conectar | `FAILED` (`HOLD_NOT_SENT`) | 503 | `CATEDRA_UNAVAILABLE` |
+| Resultado desconocido: timeout, corte, `5xx` o `201` ilegible (8a) | `FAILED` (`HOLD_OUTCOME_UNKNOWN`) | 503 | `HOLD_OUTCOME_UNKNOWN` |
+| `409 SLOT_ALREADY_HELD`, `409 SLOT_ALREADY_RESERVED` (8b) | `FAILED` (el `code`) | 409 | `SLOT_NOT_AVAILABLE` |
+| `400 INVALID_SLOT` (8c) | `FAILED` | 400 | `INVALID_SLOT` |
+| `400 PROFESSIONAL_DISABLED` (8c) | `FAILED` | 400 | `PROFESSIONAL_DISABLED` |
+| `404 PROFESSIONAL_NOT_FOUND` (8d) | `FAILED` | 404 | `PROFESSIONAL_NOT_FOUND` |
+| Otro `code`, como `VALIDATION_ERROR` (8e) | `FAILED`, ERROR en el log | 500 | `INTERNAL_ERROR` |
+| Acceso denegado: `401`, `403` sin `code` o `STUDENT_INTEGRATION_NOT_FOUND` (8e) | `FAILED` (`CATEDRA_ACCESS_DENIED`), ERROR | 503 | `CATEDRA_UNAVAILABLE` |
+| Respuesta fuera de contrato | `FAILED` (`CATEDRA_INVALID_RESPONSE`) | 502 | `UPSTREAM_INVALID_RESPONSE` |
+
+**Confirmar el hold** (el proceso está en `HOLD_CREATED`):
+
+| Falla | Proceso (motivo) | HTTP | `code` |
+| --- | --- | --- | --- |
+| No se pudo conectar (11a) | queda `HOLD_CREATED` | 202 | — |
+| Resultado desconocido (11a) | queda `HOLD_CREATED` | 202 | — |
+| `409 RESERVATION_PROCESS_ALREADY_CONFIRMED` (11d) | `WAITING_FOR_PHONE_REQUEST` | 202 | — |
+| `404 HOLD_EXPIRED` (11b) | `EXPIRED` (`HOLD_EXPIRED`) | 409 | `RESERVATION_EXPIRED` |
+| `409 SLOT_ALREADY_RESERVED` (11c) | `FAILED` | 409 | `SLOT_NOT_AVAILABLE` |
+| `400 INVALID_SLOT` (11c) | `FAILED` | 400 | `INVALID_SLOT` |
+| `404 PROFESSIONAL_NOT_FOUND` (11c) | `FAILED` | 404 | `PROFESSIONAL_NOT_FOUND` |
+| Otro `code`: `HOLD_NOT_FOUND`, `HOLD_OWNER_MISMATCH`, `EXTERNAL_PATIENT_MISMATCH`, `VALIDATION_ERROR` (11e) | `FAILED`, ERROR | 500 | `INTERNAL_ERROR` |
+| Acceso denegado (11e) | `FAILED` (`CATEDRA_ACCESS_DENIED`), ERROR | 503 | `CATEDRA_UNAVAILABLE` |
+| Respuesta fuera de contrato | `FAILED` (`CATEDRA_INVALID_RESPONSE`) | 502 | `UPSTREAM_INVALID_RESPONSE` |
+
+Si, al cerrar el proceso por un rechazo del confirm, la transición no tiene efecto porque un evento de
+Kafka ya lo movió (llegó el pedido de teléfono o se cerró), el rechazo no manda: se responde `202` con
+el estado actual.
+
+**Guardados que fallan por la base** (no por un choque de versión):
+
+- **Después del `201` del hold:** **no se llama al confirm**. Queda un ERROR en el log con el `id`
+  local, el `holdId` y el `reservationProcessId` (no son secretos y sirven para reconciliar a mano).
+  Se responde `500 INTERNAL_ERROR`, avisando que el horario puede quedar bloqueado unos minutos. El
+  proceso queda en `CREATING_HOLD` y el hold vence solo, porque nunca se confirmó.
+- **Después del `202` del confirm:** ERROR con los mismos tres IDs y se responde `202` con el último
+  estado guardado (`HOLD_CREATED`). El confirm se aplicó, así que la cátedra va a pedir el teléfono y
+  ese evento hace avanzar el proceso desde `HOLD_CREATED` (CU-05 3.3a).
+
+**Limitación hasta CU-11:** un proceso que queda en `HOLD_CREATED` (11a) o en `CREATING_HOLD` no lo
+cierra nadie mientras no exista la reconciliación, y el índice único parcial le impide al usuario
+iniciar otra reserva. Si el confirm no se aplicó, la cátedra tampoco publica ningún evento para ese
+proceso. Mientras tanto se destraba a mano en la base (ver la explicación del issue #12).
+
 ## Postcondiciones
 
 - **De éxito:** existe un proceso del usuario en `WAITING_FOR_PHONE_REQUEST` o `PHONE_REQUESTED`

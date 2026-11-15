@@ -188,7 +188,7 @@ stateDiagram-v2
 | DPT-15 | `eventId` recibidos en una tabla con clave única, en la misma transacción que el cambio de estado; también los procesados sin efecto. Offset después de persistir. El último `eventId` enviado se guarda en el proceso. | CU-05, CU-06, CU-07 |
 | DPT-16 | Se adopta DP-06 del catálogo: token técnico de servicio de 5 min (configurable) con `ROLE_SERVICE`, `aud=catalogo-service` **y** `iss=turnos-service`; `X-User-Login` solo para trazabilidad. | CU-02, CU-03, CU-04 |
 | DPT-17 | Pedido repetido del mismo turno devuelve el proceso existente; un solo proceso intermedio por usuario (`409` para otro turno), garantizado por un índice único parcial sobre los estados intermedios. | CU-04 |
-| DPT-18 | Los casos fijan HTTP, código de la cátedra y significado; los `code` propios se definen en el contrato REST con KMP. Los errores de configuración de la cuenta técnica no se reenvían. | Todos |
+| DPT-18 | Los casos fijan HTTP, código de la cátedra y significado; los `code` propios están en el contrato REST con KMP ([`api-rest.md`](../api-rest.md)). Los errores de configuración de la cuenta técnica no se reenvían. | Todos |
 | DPT-19 | Un recurso de otro usuario responde `404`, igual que uno inexistente. | CU-06, CU-08, CU-10 |
 | DPT-20 | `login` de 3 a 50 caracteres en el registro y en `/api/admin/users`. | CU-01 |
 | DPT-21 | El dueño de procesos y reservas es el `id` interno del usuario, no el login. | CU-01, CU-02, CU-04, CU-06, CU-08 a CU-12 |
@@ -198,8 +198,11 @@ stateDiagram-v2
 
 ## Decisiones todavía pendientes que afectan a estos casos
 
-- Contrato REST de turnos para KMP: rutas, DTOs y nombres de los `code` propios (DPT-18).
-- Contrato concreto con el catálogo para su CU-07: rutas, DTOs y códigos de error.
+- Contrato REST de turnos para KMP (DPT-18): resuelto en [`docs/api-rest.md`](../api-rest.md), que
+  se completa con cada caso de uso implementado (CU-03, CU-04 y CU-06 en el issue #12; CU-08 a CU-12
+  después).
+- Contrato concreto con el catálogo para su CU-07: resuelto en el issue #35 del catálogo
+  (`docs/use-cases/CU-07-consultar-agenda-vigente.md` y su ADR 0007).
 - Motor de base y herramienta de migraciones: resuelto en el
   [ADR 0001 (PostgreSQL)](../adr/0001-postgresql.md) y el
   [ADR 0002 (Liquibase)](../adr/0002-liquibase.md). El índice único parcial de DPT-17 es uno de

@@ -113,6 +113,48 @@ public final class ReservationProcessMatrix {
         FAILED                    FS           FS                        FS              FS              FS             FS        FS      FS      FS        FS        FS
         """;
 
+    /**
+     * La consulta {@code canSubmitPhone} de CU-06, por estado, con el reloj <strong>antes</strong> de {@link #VENCE} (la
+     * columna "a tiempo") y <strong>en</strong> {@link #VENCE} (la columna "vencido": el vencimiento es exclusivo).
+     */
+    // prettier-ignore
+    private static final String TABLA_TELEFONO = """
+        CREATING_HOLD             NOT_REQUESTED_YET NOT_REQUESTED_YET
+        HOLD_CREATED              NOT_REQUESTED_YET NOT_REQUESTED_YET
+        WAITING_FOR_PHONE_REQUEST NOT_REQUESTED_YET NOT_REQUESTED_YET
+        PHONE_REQUESTED           ALLOWED           DEADLINE_PASSED
+        PHONE_SUBMITTED           ALREADY_SUBMITTED ALREADY_SUBMITTED
+        PHONE_REJECTED            ALLOWED           DEADLINE_PASSED
+        CONFIRMED                 CLOSED            CLOSED
+        CANCELLED                 CLOSED            CLOSED
+        EXPIRED                   CLOSED            CLOSED
+        INVALID                   CLOSED            CLOSED
+        FAILED                    CLOSED            CLOSED
+        """;
+
+    /** Un caso de la tabla del teléfono: el estado, si ya venció, y la respuesta esperada. */
+    public record CasoTelefono(ReservationProcessStatus estado, boolean vencido, PhoneSubmissionCheck esperado) {
+        @Override
+        public String toString() {
+            return estado + (vencido ? " vencido" : " a tiempo") + " -> " + esperado;
+        }
+    }
+
+    /** Los 22 casos de la tabla del teléfono. Falla si falta o sobra un estado. */
+    public static List<CasoTelefono> casosTelefono() {
+        List<CasoTelefono> casos = new ArrayList<>();
+        for (String linea : TABLA_TELEFONO.strip().split("\n")) {
+            String[] celdas = linea.strip().split("\\s+");
+            ReservationProcessStatus estado = ReservationProcessStatus.valueOf(celdas[0]);
+            casos.add(new CasoTelefono(estado, false, PhoneSubmissionCheck.valueOf(celdas[1])));
+            casos.add(new CasoTelefono(estado, true, PhoneSubmissionCheck.valueOf(celdas[2])));
+        }
+        if (casos.size() != ReservationProcessStatus.values().length * 2) {
+            throw new IllegalStateException("La tabla del teléfono no tiene todos los estados");
+        }
+        return casos;
+    }
+
     private ReservationProcessMatrix() {}
 
     /** Los 121 casos, en el orden de la tabla. Falla si a la tabla le falta o le sobra un estado o una columna. */

@@ -90,6 +90,22 @@ sus turnos para una fecha o una semana.
 
 ## Notas
 
+- **Contrato REST:** ruta, respuesta y `code` en [`api-rest.md`](../api-rest.md#cu-03-turnos-disponibles).
+- **Implementación (issue #12):**
+  - Los límites del rango son inclusivos: 7 días es `to <= from + 6` y el horizonte es
+    `to <= hoy + 60`.
+  - El paso 8 (descartar los turnos ya iniciados) se hace **antes** del paso 6: el resultado es el
+    mismo y, si no queda ningún turno, no se llama a la cátedra (como en 5a). Un turno que empieza
+    justo ahora ya empezó.
+  - Un `professionalId` que no es positivo responde `404` sin consultar al catálogo.
+  - Dos horarios del mismo día que generan la misma hora de inicio dejan un solo turno (la cátedra
+    identifica el hold por profesional, fecha e inicio): el del horario que empieza antes y, a
+    igualdad, el de menor `id`. Turnos con inicios distintos que se pisan se ofrecen los dos; no se
+    sabe cómo los trata la cátedra, que valida al crear el hold.
+  - Un horario con duración `<= 0`, con `startTime >= endTime` o cuyo `startTime` no es un minuto
+    entero no genera turnos: la hora del hold se manda como `HH:mm`.
+  - El catálogo o la cátedra fuera de contrato responden `502`; el token de servicio rechazado por el
+    catálogo, `503` como en 3a. El `Retry-After` del catálogo se reenvía.
 - Un slot ocupado por un hold propio del usuario también aparece como no disponible.
 - La disponibilidad es una foto del momento: entre la consulta y la reserva otro cliente puede
   tomar el slot. Por eso la cátedra vuelve a validar al crear el hold (CU-04).

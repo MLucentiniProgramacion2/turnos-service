@@ -219,6 +219,14 @@ application:
     # tarde la migración. Con false corre sincrónico en todos los perfiles (issue #10, ADR 0002).
     async-start: false
 
+# Reglas de fechas de la reserva (DPT-10). Ver ReservationProperties, que tiene los mismos valores por defecto.
+# Una zona que no existe o un horizonte fuera de 1 a 365 días impiden arrancar.
+reservation:
+  # Zona horaria de atención: "hoy" y "ahora" se calculan en esta zona.
+  time-zone: ${RESERVATION_TIME_ZONE:America/Argentina/Mendoza}
+  # Se ofrecen y se reservan turnos desde hoy hasta hoy más estos días.
+  booking-horizon-days: ${RESERVATION_BOOKING_HORIZON_DAYS:60}
+
 # Token técnico de servicio hacia el catálogo (DPT-16, ADR 0005). Como máximo 5 min, o el catálogo
 # responde 403 a cada pedido: con más, la aplicación no arranca.
 security:
@@ -235,6 +243,15 @@ catedra:
     # DPT-08: 2 s para conectar y 5 s para la respuesta completa.
     connect-timeout: ${CATEDRA_CONNECT_TIMEOUT:2s}
     read-timeout: ${CATEDRA_READ_TIMEOUT:5s}
+  # Kafka de la cátedra (contrato §15, ADR 0006). Ver CatedraKafkaProperties: el resto de la configuración está
+  # en Java y spring.kafka.* no se usa. Sin valor por defecto: si falta una variable, la aplicación no arranca.
+  # Los valores reales salen de GET /api/student/integration y van solo en .env.
+  kafka:
+    bootstrap-servers: ${CATEDRA_KAFKA_BOOTSTRAP_SERVERS:}
+    actions-topic: ${CATEDRA_KAFKA_ACTIONS_TOPIC:}
+    consumer-group: ${CATEDRA_KAFKA_CONSUMER_GROUP:}
+    phone-topic: ${CATEDRA_KAFKA_PHONE_TOPIC:}
+    group-id: ${CATEDRA_GROUP_ID:}
 
 # Servicio de catálogo: agenda vigente (CU-07 del catálogo). Sin valor por defecto: si falta, la aplicación
 # no arranca. Local: http://localhost:8081. DPT-13: 2 s y 5 s, sin reintentos.

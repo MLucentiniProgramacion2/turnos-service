@@ -110,6 +110,22 @@ class ReservationProcessTest {
     // Recorridos completos
     // ---------------------------------------------------------------------------------------------------------------
 
+    static List<ReservationProcessMatrix.CasoTelefono> casosTelefono() {
+        return ReservationProcessMatrix.casosTelefono();
+    }
+
+    /** CU-06 3a a 3d: la consulta no cambia el proceso, y el vencimiento es exclusivo. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("casosTelefono")
+    void siAceptaElTelefonoPorEstadoYPlazo(ReservationProcessMatrix.CasoTelefono caso) {
+        ReservationProcess proceso = ReservationProcessMatrix.procesoEn(caso.estado(), 42);
+        String antes = proceso.toString() + proceso.getStatusChangedAt();
+        Instant ahora = caso.vencido() ? ReservationProcessMatrix.VENCE : ReservationProcessMatrix.VENCE.minusMillis(1);
+
+        assertThat(proceso.canSubmitPhone(ahora)).isEqualTo(caso.esperado());
+        assertThat(proceso.toString() + proceso.getStatusChangedAt()).isEqualTo(antes);
+    }
+
     @Test
     void startDejaElProcesoEnCreatingHoldSinDatosDeLaCatedra() {
         ReservationProcess proceso = nuevo();

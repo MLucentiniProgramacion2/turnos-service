@@ -97,6 +97,20 @@ catedra:
     url: http://localhost:1
     token: token-falso-solo-para-tests
 
+  kafka:
+    # Solo para tests: valores falsos, y el listener apagado para que cada contexto no se conecte a un
+    # broker que no existe. Lo prenden solo los tests de Kafka, con un broker de Testcontainers.
+    bootstrap-servers: localhost:1
+    actions-topic: topic-de-acciones-de-test
+    consumer-group: grupo-de-test
+    phone-topic: topic-de-telefono-de-test
+    group-id: group-id-de-test
+    listener-enabled: false
+    producer:
+      # Apagada por lo mismo que el listener: cada contexto intentaría describir el topic en un broker que no existe.
+      # La prenden solo sus tests.
+      background-topic-check-enabled: false
+
 catalogo:
   api:
     # Solo para tests: nadie escucha en el puerto 1. Los tests del cliente usan un servidor simulado.

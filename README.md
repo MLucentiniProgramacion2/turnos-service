@@ -36,6 +36,11 @@ Completar el `.env` (ignorado por Git):
 - `CATEDRA_API_URL` y `CATEDRA_JWT`: API REST de la cátedra y JWT técnico de la cuenta del
   proyecto, los mismos que en catalogo-service. Solo accesible por ZeroTier. Sin alguno de los dos,
   la aplicación no arranca ([ADR 0004](docs/adr/0004-cliente-http-catedra.md)).
+- `CATEDRA_KAFKA_BOOTSTRAP_SERVERS`, `CATEDRA_KAFKA_ACTIONS_TOPIC`, `CATEDRA_KAFKA_PHONE_TOPIC`,
+  `CATEDRA_KAFKA_CONSUMER_GROUP` y `CATEDRA_GROUP_ID`: Kafka de la cátedra, los dos topics y el
+  `groupId` de `integration`, y el grupo propio de turnos (`kafkaConsumerGroupId` con el sufijo
+  `-turnos`, nunca el del catálogo). Sin alguna, la aplicación no arranca; con el broker caído, sí
+  ([ADR 0006](docs/adr/0006-kafka-en-turnos.md)).
 - `CATALOGO_API_URL`: servicio de catálogo (local: `http://localhost:8081`). Sin ella, la aplicación
   no arranca.
 
@@ -46,6 +51,8 @@ Opcionales, con su valor por defecto:
 | `CATEDRA_CONNECT_TIMEOUT`, `CATEDRA_READ_TIMEOUT` | `2s`, `5s` | Timeouts de la cátedra (DPT-08) |
 | `CATALOGO_CONNECT_TIMEOUT`, `CATALOGO_READ_TIMEOUT` | `2s`, `5s` | Timeouts del catálogo (DPT-13) |
 | `SERVICE_TOKEN_LIFETIME` | `5m` | Vida del token de servicio hacia el catálogo, de `30s` a `5m`; con más, la aplicación no arranca ([ADR 0005](docs/adr/0005-token-de-servicio.md)) |
+| `RESERVATION_TIME_ZONE` | `America/Argentina/Mendoza` | Zona horaria de atención: "hoy" y "ahora" para ofrecer y reservar turnos (DPT-10). Una zona que no existe impide arrancar |
+| `RESERVATION_BOOKING_HORIZON_DAYS` | `60` | Hasta cuántos días adelante se ofrecen turnos, de 1 a 365 |
 
 ## Uso
 
@@ -67,6 +74,44 @@ curl -X POST http://localhost:8080/api/register -H 'Content-Type: application/js
   -d '{"login":"ana.perez","password":"una-clave","firstName":"Ana","lastName":"Pérez","email":"ana@example.com","langKey":"es"}'
 curl -X POST http://localhost:8080/api/authenticate -H 'Content-Type: application/json' \
   -d '{"username":"ana.perez","password":"una-clave"}'   # devuelve {"id_token": "..."}
+```
+
+### La reserva
+
+Con el catálogo levantado (puerto 8081) y ZeroTier conectado. El contrato completo, con cada `code`
+de error, está en [`docs/api-rest.md`](docs/api-rest.md).
+
+| Endpoint | Caso de uso | Respuesta |
+| --- | --- | --- |
+| `GET /api/professionals/{id}/availability?from=&to=` | CU-03 | turnos libres por día (hasta 7 días, hasta hoy + 60) |
+| `POST /api/reservation-processes` | CU-04 | `202` con el proceso; `200` si el mismo turno ya estaba en curso |
+| `POST /api/reservation-processes/{id}/phone` | CU-06 | `202` con el proceso en `PHONE_SUBMITTED` |
+
+El pedido de teléfono (CU-05) y el resultado (CU-07) llegan por Kafka: no tienen endpoint. Para no
+dejar el token en el historial de la terminal, se guarda en una variable sin mostrarlo:
+
+```bash
+read -r -s -p 'Clave: ' CLAVE; echo
+TOKEN=$(jq -n --arg u ana.perez --arg p "$CLAVE" '{username:$u,password:$p}' \
+  | curl -s -X POST http://localhost:8080/api/authenticate -H 'Content-Type: application/json' -d @- | jq -r .id_token)
+unset CLAVE
+curl -s "http://localhost:8080/api/professionals/202/availability?from=2026-12-14&to=2026-12-18" \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+### Un usuario trabado en una reserva en curso
+
+Mientras no exista la reconciliación (CU-11, otro issue), un proceso que quedó en un estado intermedio
+(por ejemplo, `HOLD_CREATED` porque el confirm no respondió, o porque se perdió un evento) impide al
+usuario iniciar otra reserva (índice único parcial, DPT-17). Se destraba a mano, pasándolo a `FAILED`
+**después de comprobar en la cátedra** (`GET /api/appointments`) que ese proceso no quedó confirmado:
+
+```bash
+docker exec -it turnos-db psql -U turnos_app -d turnos -c \
+  "UPDATE reservation_process SET status = 'FAILED', closing_reason = 'MANUAL_UNLOCK',
+     status_changed_at = now(), version = version + 1
+   WHERE id = '<id del proceso>' AND status IN ('CREATING_HOLD', 'HOLD_CREATED', 'WAITING_FOR_PHONE_REQUEST',
+     'PHONE_REQUESTED', 'PHONE_SUBMITTED', 'PHONE_REJECTED');"
 ```
 
 ## Administrador
@@ -102,7 +147,11 @@ feature `reservation`, con changelogs propios en `config/liquibase/changelog/res
   - **Índice único parcial** `uq_reservation_process_one_intermediate_per_user`: un solo proceso
     intermedio por usuario (DPT-17).
 - **`processed_event`**: los `eventId` de los eventos de Kafka ya procesados, como clave primaria
-  (DPT-15).
+  (DPT-15). Se escriben con `insert ... on conflict do nothing`, en la misma transacción que el cambio
+  de estado ([ADR 0006](docs/adr/0006-kafka-en-turnos.md)).
+
+Turnos **no guarda el catálogo**: la agenda se pide al servicio de catálogo en cada consulta (CU-03) y
+en cada reserva (CU-04). Del profesional solo quedan los datos históricos del proceso, para mostrar.
 
 Estados del proceso (DPT-05, diagrama en [`docs/use-cases/README.md`](docs/use-cases/README.md)):
 
@@ -118,8 +167,16 @@ Estados del proceso (DPT-05, diagrama en [`docs/use-cases/README.md`](docs/use-c
 ./mvnw test -Dtest=NombreTest  # un test unitario
 ```
 
-Los tests de integración levantan su propio PostgreSQL con Testcontainers, así que Docker tiene que
-estar corriendo. No usan el `.env`: el perfil de test tiene una clave JWT fija.
+Los tests de integración levantan su propio PostgreSQL y sus brokers de Kafka con Testcontainers,
+así que Docker tiene que estar corriendo. No usan el `.env`: el perfil de test tiene una clave JWT fija
+y nombres de topics inventados. Los de Kafka miden plazos reales (hasta 8 s) y uno pausa su propio
+broker con `docker pause`.
+
+Para correr un test de integración suelto con la misma configuración que `verify`:
+
+```bash
+./mvnw test -Dtest=NombreIT -Dspring.profiles.active=test,testdev
+```
 
 ### Comprobaciones manuales
 
