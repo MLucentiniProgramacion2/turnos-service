@@ -36,6 +36,8 @@ class CatedraKafkaConsumerConfigurationTest {
     private static final String BOOTSTRAP = "catedra.kafka.bootstrap-servers=broker.test:9092";
     private static final String TOPIC = "catedra.kafka.actions-topic=alumnos.turnos.acciones.de-prueba";
     private static final String GRUPO = "catedra.kafka.consumer-group=alumnos-de-prueba-turnos";
+    private static final String TELEFONO = "catedra.kafka.phone-topic=catedra.turnos.telefono.de-prueba";
+    private static final String GROUP_ID = "catedra.kafka.group-id=de-prueba";
     private static final ConsumerRecord<String, String> EVENTO = new ConsumerRecord<>("alumnos.turnos.acciones.de-prueba", 0, 127, "process-a92b47d0", "{}");
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner().withUserConfiguration(CatedraKafkaConsumerConfiguration.class);
@@ -43,7 +45,7 @@ class CatedraKafkaConsumerConfigurationTest {
     @Test
     void conLasTresVariablesArrancaConElListenerPrendidoYLosValoresDeDpt22() {
         runner
-            .withPropertyValues(BOOTSTRAP, TOPIC, GRUPO)
+            .withPropertyValues(BOOTSTRAP, TOPIC, GRUPO, TELEFONO, GROUP_ID)
             .run(context -> {
                 assertThat(context).hasNotFailed();
                 CatedraKafkaProperties properties = context.getBean(CatedraKafkaProperties.class);
@@ -66,12 +68,16 @@ class CatedraKafkaConsumerConfigurationTest {
 
     static Stream<Arguments> configuracionesIncompletas() {
         return Stream.of(
-            Arguments.of("bootstrapServers", new String[] { TOPIC, GRUPO }),
-            Arguments.of("actionsTopic", new String[] { BOOTSTRAP, GRUPO }),
-            Arguments.of("consumerGroup", new String[] { BOOTSTRAP, TOPIC }),
-            Arguments.of("bootstrapServers", new String[] { "catedra.kafka.bootstrap-servers=", TOPIC, GRUPO }),
-            Arguments.of("actionsTopic", new String[] { BOOTSTRAP, "catedra.kafka.actions-topic=", GRUPO }),
-            Arguments.of("consumerGroup", new String[] { BOOTSTRAP, TOPIC, "catedra.kafka.consumer-group=" })
+            Arguments.of("bootstrapServers", new String[] { TOPIC, GRUPO, TELEFONO, GROUP_ID }),
+            Arguments.of("actionsTopic", new String[] { BOOTSTRAP, GRUPO, TELEFONO, GROUP_ID }),
+            Arguments.of("consumerGroup", new String[] { BOOTSTRAP, TOPIC, TELEFONO, GROUP_ID }),
+            Arguments.of("phoneTopic", new String[] { BOOTSTRAP, TOPIC, GRUPO, GROUP_ID }),
+            Arguments.of("groupId", new String[] { BOOTSTRAP, TOPIC, GRUPO, TELEFONO }),
+            Arguments.of("bootstrapServers", new String[] { "catedra.kafka.bootstrap-servers=", TOPIC, GRUPO, TELEFONO, GROUP_ID }),
+            Arguments.of("actionsTopic", new String[] { BOOTSTRAP, "catedra.kafka.actions-topic=", GRUPO, TELEFONO, GROUP_ID }),
+            Arguments.of("consumerGroup", new String[] { BOOTSTRAP, TOPIC, "catedra.kafka.consumer-group=", TELEFONO, GROUP_ID }),
+            Arguments.of("phoneTopic", new String[] { BOOTSTRAP, TOPIC, GRUPO, "catedra.kafka.phone-topic=", GROUP_ID }),
+            Arguments.of("groupId", new String[] { BOOTSTRAP, TOPIC, GRUPO, TELEFONO, "catedra.kafka.group-id=" })
         );
     }
 
@@ -84,7 +90,7 @@ class CatedraKafkaConsumerConfigurationTest {
     @Test
     void elConsumidorQuedaComoPideElAdr() {
         runner
-            .withPropertyValues(BOOTSTRAP, TOPIC, GRUPO)
+            .withPropertyValues(BOOTSTRAP, TOPIC, GRUPO, TELEFONO, GROUP_ID)
             .run(context -> {
                 assertThat(context.getBean(ConsumerFactory.class).getConfigurationProperties())
                     .containsEntry(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "broker.test:9092")

@@ -250,6 +250,8 @@ catedra:
     bootstrap-servers: ${CATEDRA_KAFKA_BOOTSTRAP_SERVERS:}
     actions-topic: ${CATEDRA_KAFKA_ACTIONS_TOPIC:}
     consumer-group: ${CATEDRA_KAFKA_CONSUMER_GROUP:}
+    phone-topic: ${CATEDRA_KAFKA_PHONE_TOPIC:}
+    group-id: ${CATEDRA_GROUP_ID:}
 
 # Servicio de catálogo: agenda vigente (CU-07 del catálogo). Sin valor por defecto: si falta, la aplicación
 # no arranca. Local: http://localhost:8081. DPT-13: 2 s y 5 s, sin reintentos.

@@ -103,6 +103,8 @@ catedra:
     bootstrap-servers: localhost:1
     actions-topic: topic-de-acciones-de-test
     consumer-group: grupo-de-test
+    phone-topic: topic-de-telefono-de-test
+    group-id: group-id-de-test
     listener-enabled: false
 
 catalogo:
