@@ -9,6 +9,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneResult
 import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetAvailabilityUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandlePhoneRequestedUseCase;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandleProcessOutcomeUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
 import java.time.LocalDate;
@@ -26,6 +27,7 @@ public class ReservationService {
     private final GetAvailabilityUseCase getAvailabilityUseCase;
     private final StartReservationUseCase startReservationUseCase;
     private final HandlePhoneRequestedUseCase handlePhoneRequestedUseCase;
+    private final HandleProcessOutcomeUseCase handleProcessOutcomeUseCase;
     private final SubmitPhoneUseCase submitPhoneUseCase;
 
     /** CU-03. */
@@ -41,6 +43,11 @@ public class ReservationService {
     /** CU-05. */
     public EventOutcome handlePhoneRequested(ReservationEvent.PhoneRequested event) {
         return handlePhoneRequestedUseCase.handle(event);
+    }
+
+    /** CU-07. */
+    public EventOutcome handleProcessOutcome(ReservationEvent.OutcomeEvent event) {
+        return handleProcessOutcomeUseCase.handle(event);
     }
 
     /** CU-06. */

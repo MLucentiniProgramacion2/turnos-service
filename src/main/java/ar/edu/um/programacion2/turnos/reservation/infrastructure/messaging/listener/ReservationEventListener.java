@@ -62,6 +62,7 @@ public class ReservationEventListener {
     private void handle(ReservationEvent event, String where) {
         EventOutcome outcome = switch (event) {
             case ReservationEvent.PhoneRequested requested -> reservationService.handlePhoneRequested(requested);
+            case ReservationEvent.OutcomeEvent result -> reservationService.handleProcessOutcome(result);
         };
         log(event, outcome, where);
     }

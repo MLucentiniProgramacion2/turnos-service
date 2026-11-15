@@ -73,19 +73,33 @@ public class ReservationEventProcessor {
     }
 
     /**
-     * El evento se aplica por {@code reservationProcessId}, que es la clave del contrato. Un {@code holdId} distinto del
-     * guardado no debería pasar (la cátedra los genera juntos): se deja una advertencia para investigarlo, sin perder el
-     * evento.
+     * El evento se aplica por {@code reservationProcessId}, que es la clave del contrato. Un {@code holdId} o un
+     * {@code requestEventId} distinto del guardado no debería pasar (la cátedra los genera juntos): se deja una advertencia
+     * para investigarlo, sin perder el evento. Un {@code requestEventId} distinto es justo lo que la cátedra informa como
+     * {@code REQUEST_EVENT_MISMATCH} con {@code AppointmentProcessInvalid}: ese evento se aplica igual.
      */
     private static void warnIfHoldDoesNotMatch(ReservationEvent event, ReservationProcess process) {
-        String saved = process.getHold().map(hold -> hold.holdId()).orElse(null);
-        if (event.holdId() != null && saved != null && !saved.equals(event.holdId())) {
-            LOG.warn(
-                "{} {} para el proceso {}: el holdId no coincide con el guardado; se aplica por reservationProcessId",
-                event.eventType(),
-                event.eventId(),
-                process.getId()
-            );
+        String savedHold = process.getHold().map(hold -> hold.holdId()).orElse(null);
+        if (differ(event.holdId(), savedHold)) {
+            warnMismatch(event, process, "holdId");
         }
+        String savedRequest = process.getPhoneRequest().map(request -> request.requestEventId()).orElse(null);
+        if (differ(event.requestEventId(), savedRequest)) {
+            warnMismatch(event, process, "requestEventId");
+        }
+    }
+
+    private static boolean differ(String received, String saved) {
+        return received != null && saved != null && !saved.equals(received);
+    }
+
+    private static void warnMismatch(ReservationEvent event, ReservationProcess process, String field) {
+        LOG.warn(
+            "{} {} para el proceso {}: el {} no coincide con el guardado; se aplica por reservationProcessId",
+            event.eventType(),
+            event.eventId(),
+            process.getId(),
+            field
+        );
     }
 }
