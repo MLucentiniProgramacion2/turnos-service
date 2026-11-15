@@ -1,5 +1,6 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.web.controller;
 
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import java.time.Duration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,13 @@ public final class ReservationErrorResponses {
     public static final String CATEDRA_UNAVAILABLE = "CATEDRA_UNAVAILABLE";
     public static final String UPSTREAM_INVALID_RESPONSE = "UPSTREAM_INVALID_RESPONSE";
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+    public static final String INVALID_SLOT = "INVALID_SLOT";
+    public static final String USER_NOT_FOUND = "USER_NOT_FOUND";
+    public static final String PROFILE_INCOMPLETE = "PROFILE_INCOMPLETE";
+    public static final String RESERVATION_IN_PROGRESS = "RESERVATION_IN_PROGRESS";
+    public static final String SLOT_NOT_AVAILABLE = "SLOT_NOT_AVAILABLE";
+    public static final String RESERVATION_EXPIRED = "RESERVATION_EXPIRED";
+    public static final String HOLD_OUTCOME_UNKNOWN = "HOLD_OUTCOME_UNKNOWN";
 
     private static final String CODE = "code";
 
@@ -76,6 +84,69 @@ public final class ReservationErrorResponses {
 
     public static ErrorResponseException internalError() {
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR, "Error interno");
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // CU-04
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /** {@code 400}: el turno ya empezó, la hora tiene segundos o no es un turno de un horario habilitado. */
+    public static ErrorResponseException invalidSlot() {
+        return problem(HttpStatus.BAD_REQUEST, INVALID_SLOT, "El turno no es válido o ya no está habilitado");
+    }
+
+    /**
+     * {@code 401}: el token es válido, pero su usuario ya no existe. Es lo que la app ya sabe tratar: vuelve al login, que
+     * va a fallar.
+     */
+    public static ErrorResponseException userNotFound() {
+        return problem(HttpStatus.UNAUTHORIZED, USER_NOT_FOUND, "El usuario ya no existe");
+    }
+
+    /** {@code 409}: el nombre o el apellido del perfil no sirven como nombre del paciente (2 a 100 caracteres). */
+    public static ErrorResponseException profileIncomplete() {
+        return problem(HttpStatus.CONFLICT, PROFILE_INCOMPLETE, "Completá el nombre y el apellido de tu perfil para poder reservar");
+    }
+
+    /**
+     * {@code 409}: el usuario ya tiene una reserva en curso para otro turno (DPT-17). Lleva el {@code processId} de ese
+     * proceso, para que la app lo pueda abrir: es del mismo usuario, así que no revela nada ajeno.
+     *
+     * @param existing puede ser {@code null} si el proceso terminó justo antes de leerlo
+     */
+    public static ErrorResponseException reservationInProgress(ReservationProcessId existing) {
+        ErrorResponseException response = problem(HttpStatus.CONFLICT, RESERVATION_IN_PROGRESS, "Ya tenés una reserva en curso");
+        if (existing != null) {
+            response.getBody().setProperty("processId", existing.value().toString());
+        }
+        return response;
+    }
+
+    public static ErrorResponseException slotNotAvailable() {
+        return problem(HttpStatus.CONFLICT, SLOT_NOT_AVAILABLE, "El turno ya no está disponible");
+    }
+
+    /** {@code 409}: venció el tiempo para completar la reserva (CU-04 11b, CU-06 3d). */
+    public static ErrorResponseException reservationExpired() {
+        return problem(HttpStatus.CONFLICT, RESERVATION_EXPIRED, "Venció el tiempo para completar la reserva");
+    }
+
+    /** {@code 503}: no se sabe si el hold se creó (DPT-06). El aviso es parte del caso de uso (8a). */
+    public static ErrorResponseException holdOutcomeUnknown() {
+        return problem(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            HOLD_OUTCOME_UNKNOWN,
+            "No se pudo confirmar la reserva. El horario puede quedar bloqueado unos minutos: probá con otro turno o más tarde"
+        );
+    }
+
+    /** {@code 500}: el hold se creó en la cátedra, pero turnos no lo pudo guardar. El horario queda bloqueado hasta que venza. */
+    public static ErrorResponseException holdNotRecorded() {
+        return problem(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            INTERNAL_ERROR,
+            "No se pudo registrar la reserva. El horario puede quedar bloqueado unos minutos: probá con otro turno o más tarde"
+        );
     }
 
     static ErrorResponseException problem(HttpStatus status, String code, String detail) {
