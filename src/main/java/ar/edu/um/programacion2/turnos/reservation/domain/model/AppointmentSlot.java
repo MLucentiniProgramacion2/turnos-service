@@ -1,6 +1,7 @@
 package ar.edu.um.programacion2.turnos.reservation.domain.model;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Objects;
 
@@ -22,5 +23,13 @@ public record AppointmentSlot(long professionalId, LocalDate date, LocalTime sta
         if (!startTime.isBefore(endTime)) {
             throw new IllegalArgumentException("El turno tiene que terminar después de empezar: " + startTime + "-" + endTime);
         }
+    }
+
+    /**
+     * Si el turno ya empezó en ese momento de la zona de atención (DPT-10): un turno que empieza justo ahora ya empezó.
+     * CU-03 no lo ofrece y CU-04 no lo reserva.
+     */
+    public boolean hasStartedAt(LocalDateTime localNow) {
+        return !date.atTime(startTime).isAfter(Objects.requireNonNull(localNow, "Falta la fecha y hora actual"));
     }
 }
