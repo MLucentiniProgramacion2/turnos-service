@@ -1,7 +1,10 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.config;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityPolicy;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.ReservationProcessIdGenerator;
 import java.time.Clock;
+import java.util.UUID;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,5 +31,11 @@ public class ReservationConfiguration {
     @Bean
     public AvailabilityPolicy availabilityPolicy(ReservationProperties properties) {
         return new AvailabilityPolicy(properties.getTimeZone(), properties.getBookingHorizonDays());
+    }
+
+    /** El identificador de cada proceso nuevo: un UUID v4 aleatorio (decisión del #10). Los tests ponen uno fijo. */
+    @Bean
+    public ReservationProcessIdGenerator reservationProcessIdGenerator() {
+        return () -> new ReservationProcessId(UUID.randomUUID());
     }
 }
