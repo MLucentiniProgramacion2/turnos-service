@@ -1,6 +1,13 @@
 package ar.edu.um.programacion2.turnos.reservation;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -63,6 +70,32 @@ public final class KafkaTestBroker {
         Map<TopicPartition, OffsetAndMetadata> offsets = await(() -> ADMIN.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get());
         OffsetAndMetadata offset = offsets.get(new TopicPartition(topic, 0));
         return offset == null ? null : offset.offset();
+    }
+
+    /** Lee desde el principio del topic hasta tener {@code cuantos} mensajes, con un tope de 20 s. */
+    public static List<ConsumerRecord<String, String>> read(String topic, int cuantos) {
+        try (
+            KafkaConsumer<String, String> consumer = new KafkaConsumer<>(
+                Map.of(
+                    ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
+                    bootstrapServers(),
+                    ConsumerConfig.GROUP_ID_CONFIG,
+                    "lector-" + UUID.randomUUID(),
+                    ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
+                    "earliest"
+                ),
+                new StringDeserializer(),
+                new StringDeserializer()
+            )
+        ) {
+            consumer.subscribe(List.of(topic));
+            List<ConsumerRecord<String, String>> leidos = new ArrayList<>();
+            long limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+            while (leidos.size() < cuantos && System.nanoTime() < limite) {
+                consumer.poll(Duration.ofMillis(300)).forEach(leidos::add);
+            }
+            return leidos;
+        }
     }
 
     public static Admin admin() {

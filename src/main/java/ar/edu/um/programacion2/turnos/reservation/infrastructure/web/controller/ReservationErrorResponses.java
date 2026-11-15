@@ -1,6 +1,7 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.web.controller;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessStatus;
 import java.time.Duration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -36,6 +37,12 @@ public final class ReservationErrorResponses {
     public static final String SLOT_NOT_AVAILABLE = "SLOT_NOT_AVAILABLE";
     public static final String RESERVATION_EXPIRED = "RESERVATION_EXPIRED";
     public static final String HOLD_OUTCOME_UNKNOWN = "HOLD_OUTCOME_UNKNOWN";
+    public static final String RESERVATION_PROCESS_NOT_FOUND = "RESERVATION_PROCESS_NOT_FOUND";
+    public static final String PHONE_NOT_REQUESTED = "PHONE_NOT_REQUESTED";
+    public static final String PHONE_ALREADY_SUBMITTED = "PHONE_ALREADY_SUBMITTED";
+    public static final String RESERVATION_PROCESS_CLOSED = "RESERVATION_PROCESS_CLOSED";
+    public static final String INVALID_PHONE_NUMBER = "INVALID_PHONE_NUMBER";
+    public static final String PHONE_SUBMISSION_UNCONFIRMED = "PHONE_SUBMISSION_UNCONFIRMED";
 
     private static final String CODE = "code";
 
@@ -146,6 +153,44 @@ public final class ReservationErrorResponses {
             HttpStatus.INTERNAL_SERVER_ERROR,
             INTERNAL_ERROR,
             "No se pudo registrar la reserva. El horario puede quedar bloqueado unos minutos: probá con otro turno o más tarde"
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // CU-06
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /** {@code 404}: el proceso no existe <strong>o es de otro usuario</strong>; la respuesta es la misma (DPT-19). */
+    public static ErrorResponseException processNotFound() {
+        return problem(HttpStatus.NOT_FOUND, RESERVATION_PROCESS_NOT_FOUND, "El proceso de reserva no existe");
+    }
+
+    public static ErrorResponseException phoneNotRequested() {
+        return problem(HttpStatus.CONFLICT, PHONE_NOT_REQUESTED, "Todavía no se pidió el teléfono");
+    }
+
+    public static ErrorResponseException phoneAlreadySubmitted() {
+        return problem(HttpStatus.CONFLICT, PHONE_ALREADY_SUBMITTED, "El teléfono ya se envió: hay que esperar el resultado");
+    }
+
+    /** {@code 409}: el proceso está confirmado o cerrado. Lleva el {@code status} actual, que la app puede mostrar. */
+    public static ErrorResponseException processClosed(ReservationProcessStatus status) {
+        ErrorResponseException response = problem(HttpStatus.CONFLICT, RESERVATION_PROCESS_CLOSED, "El proceso de reserva ya terminó");
+        response.getBody().setProperty("status", status.name());
+        return response;
+    }
+
+    /** {@code 400}: el teléfono no cumple el formato que acepta la cátedra. No repite el valor (es un dato personal). */
+    public static ErrorResponseException invalidPhone() {
+        return problem(HttpStatus.BAD_REQUEST, INVALID_PHONE_NUMBER, "El teléfono no tiene un formato válido");
+    }
+
+    /** {@code 503}: Kafka no confirmó. El proceso no cambió y se puede volver a enviar (CU-06 6a). */
+    public static ErrorResponseException phoneSubmissionUnconfirmed() {
+        return problem(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            PHONE_SUBMISSION_UNCONFIRMED,
+            "No se pudo confirmar el envío del teléfono. Podés volver a enviarlo"
         );
     }
 

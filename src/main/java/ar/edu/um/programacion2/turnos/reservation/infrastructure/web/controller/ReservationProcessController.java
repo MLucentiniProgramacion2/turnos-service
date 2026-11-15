@@ -1,21 +1,28 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.web.controller;
 
 import ar.edu.um.programacion2.turnos.reservation.application.service.ReservationService;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationResult;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneCommand;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneResult;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.ReservationProcessResponse;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.StartReservationRequest;
+import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.SubmitPhoneRequest;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.mapper.ReservationProcessDtoMapper;
 import ar.edu.um.programacion2.turnos.security.SecurityUtils;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Adaptador de entrada REST de los procesos de reserva: {@code POST /api/reservation-processes} (CU-04).
+ * Adaptador de entrada REST de los procesos de reserva: {@code POST /api/reservation-processes} (CU-04) y
+ * {@code POST /api/reservation-processes/{id}/phone} (CU-06).
  * <p>
  * Lo protege la regla de {@code /api/**}: {@code 401} sin token o con uno inválido, {@code 403} con el token técnico de
  * servicio. <strong>La identidad sale del token</strong> ({@code userId} y login, DPT-21): el cuerpo no trae ningún dato
@@ -58,6 +65,27 @@ public class ReservationProcessController {
             case StartReservationResult.CatedraUnavailable unavailable -> throw ReservationErrorResponses.catedraUnavailable();
             case StartReservationResult.UpstreamInvalidResponse invalid -> throw ReservationErrorResponses.upstreamInvalidResponse();
             case StartReservationResult.InternalError error -> throw ReservationErrorResponses.internalError();
+        };
+    }
+
+    /**
+     * CU-06. El proceso se busca con el {@code userId} del token: uno ajeno responde {@code 404}, igual que uno que no
+     * existe. Un {@code id} que no es un UUID da {@code 400} sin repetir el valor ({@code ExceptionTranslator}).
+     */
+    @PostMapping("/{id}/phone")
+    public ResponseEntity<ReservationProcessResponse> submitPhone(@PathVariable("id") UUID id, @Valid @RequestBody SubmitPhoneRequest request) {
+        long userId = SecurityUtils.getCurrentUserId().orElseThrow(ReservationErrorResponses::userNotFound);
+        SubmitPhoneResult result = reservationService.submitPhone(new SubmitPhoneCommand(userId, new ReservationProcessId(id), request.phoneNumber()));
+        return switch (result) {
+            case SubmitPhoneResult.Submitted submitted -> ResponseEntity.accepted().body(mapper.toResponse(submitted.process()));
+            case SubmitPhoneResult.NotFound notFound -> throw ReservationErrorResponses.processNotFound();
+            case SubmitPhoneResult.NotRequestedYet notRequested -> throw ReservationErrorResponses.phoneNotRequested();
+            case SubmitPhoneResult.AlreadySubmitted alreadySubmitted -> throw ReservationErrorResponses.phoneAlreadySubmitted();
+            case SubmitPhoneResult.Closed closed -> throw ReservationErrorResponses.processClosed(closed.status());
+            case SubmitPhoneResult.DeadlinePassed deadlinePassed -> throw ReservationErrorResponses.reservationExpired();
+            case SubmitPhoneResult.InvalidPhone invalidPhone -> throw ReservationErrorResponses.invalidPhone();
+            case SubmitPhoneResult.Unconfirmed unconfirmed -> throw ReservationErrorResponses.phoneSubmissionUnconfirmed();
+            case SubmitPhoneResult.SaveFailed saveFailed -> throw ReservationErrorResponses.internalError();
         };
     }
 }
