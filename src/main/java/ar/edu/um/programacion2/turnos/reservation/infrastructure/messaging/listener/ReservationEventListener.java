@@ -38,13 +38,12 @@ public class ReservationEventListener {
     public void onEvent(ConsumerRecord<String, String> message) {
         String where = "(partición " + message.partition() + ", offset " + message.offset() + ", clave " + message.key() + ")";
         switch (ReservationEventMessageMapper.parse(message.value())) {
-            case ParsedEvent.Event parsed -> handle(parsed.event(), where);
-            case ParsedEvent.NotYetSupported pending -> LOG.info(
-                "{} {} {}: los resultados todavía no se procesan; no se registra y se confirma el offset",
-                pending.eventType(),
-                pending.eventId(),
-                where
-            );
+            case ParsedEvent.Event parsed -> {
+                parsed
+                    .degradations()
+                    .forEach(degradation -> LOG.warn("{} {} {}: {}; se aplica igual", parsed.event().eventType(), parsed.event().eventId(), where, degradation));
+                handle(parsed.event(), where);
+            }
             case ParsedEvent.UnknownType unknown -> LOG.warn(
                 "Evento {} {}: eventType desconocido para el contrato v1; se descarta y se confirma el offset",
                 unknown.eventId(),
@@ -68,8 +67,10 @@ public class ReservationEventListener {
     }
 
     /**
-     * El nivel sale del resultado: lo normal (aplicado, duplicado, tardío sobre un cerrado) va en INFO; lo que no debería
-     * pasar y conviene mirar, en WARN.
+     * El nivel sale del resultado (tabla en el ADR 0006): lo normal (aplicado, duplicado, tardío sobre un cerrado o un
+     * confirmado) va en INFO; lo que no debería pasar y conviene mirar, en WARN: un proceso que no existe (2.2a), un
+     * {@code AppointmentProcessInvalid} sobre {@code CONFIRMED} (2.3b), un rechazo fuera de {@code PHONE_SUBMITTED} (2.3c),
+     * una cancelación sobre un intermedio (2.3e) y un segundo pedido de teléfono (CU-05 3.3c).
      */
     private static void log(ReservationEvent event, EventOutcome outcome, String where) {
         switch (outcome) {
@@ -84,6 +85,14 @@ public class ReservationEventListener {
             case EventOutcome.Duplicate duplicate -> LOG.info("{} {} {}: ya procesado, no se repite", event.eventType(), event.eventId(), where);
             case EventOutcome.ProcessNotFound notFound -> LOG.warn(
                 "{} {} {}: no hay un proceso local con ese reservationProcessId; se registra sin efecto",
+                event.eventType(),
+                event.eventId(),
+                where
+            );
+            // CU-07 2.3b: la cátedra informa como inválido un proceso que acá figura confirmado. Hay que mirarlo.
+            case EventOutcome.NoEffect noEffect when event instanceof ReservationEvent.ProcessInvalid
+                && noEffect.reason() == NoEffectReason.CONFIRMED_ONLY_CANCELS -> LOG.warn(
+                "{} {} {}: la cátedra informa inválido un proceso CONFIRMED; queda CONFIRMED y lo revisa la reconciliación",
                 event.eventType(),
                 event.eventId(),
                 where

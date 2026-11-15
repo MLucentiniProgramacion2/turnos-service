@@ -4,14 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationEvent;
 import java.time.Instant;
+import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
 
-/** Lectura de los mensajes del topic de acciones. Los JSON salen de los ejemplos del contrato (§15.4). */
+/** Lectura de los mensajes del topic de acciones. Los JSON salen de los ejemplos del contrato (§15.4 a §15.10). */
 class ReservationEventMessageMapperTest {
 
     /** El ejemplo de §15.4, con un campo nuevo que el contrato permite agregar. */
@@ -31,7 +31,8 @@ class ReservationEventMessageMapperTest {
                     "hold-6c0c2f41",
                     "Ingrese un numero de telefono para continuar.",
                     Instant.parse("2026-09-10T14:44:50Z")
-                )
+                ),
+                List.of()
             )
         );
     }
@@ -67,15 +68,146 @@ class ReservationEventMessageMapperTest {
         assertThat(ReservationEventMessageMapper.parse(mensaje)).isEqualTo(new ParsedEvent.Malformed(eventId, detalle));
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = { "AppointmentConfirmed", "AdditionalInformationRejected", "AppointmentProcessExpired", "AppointmentProcessInvalid", "AppointmentCancelled" })
-    void losCincoResultadosTodaviaNoSeProcesan(String tipo) {
-        assertThat(ReservationEventMessageMapper.parse("{\"eventId\":\"e-1\",\"eventType\":\"" + tipo + "\"}")).isEqualTo(new ParsedEvent.NotYetSupported(tipo, "e-1"));
-    }
-
     @Test
     void unTipoQueElContratoNoDefineEsDesconocido() {
         assertThat(ReservationEventMessageMapper.parse("{\"eventId\":\"e-1\",\"eventType\":\"CatalogUpdated\"}")).isEqualTo(new ParsedEvent.UnknownType("e-1"));
         assertThat(ReservationEventMessageMapper.parse("{\"eventId\":\"e-1\",\"eventType\":\"additionalinformationrequested\"}")).isEqualTo(new ParsedEvent.UnknownType("e-1"));
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // CU-07: los cinco resultados, con los ejemplos del contrato
+    // ---------------------------------------------------------------------------------------------------------------
+
+    static final String CONFIRMADO = """
+        {"eventId":"confirmation-event-7d10","eventType":"AppointmentConfirmed","groupId":"proyecto-juan-perez",
+         "reservationProcessId":"process-a92b47d0","holdId":"hold-6c0c2f41","requestEventId":"request-event-8a31",
+         "reservationId":8251,"professionalId":15,"date":"2026-09-14","startTime":"09:30","status":"CONFIRMED",
+         "occurredAt":"2026-09-10T14:36:01Z","schemaVersion":1}
+        """;
+    static final String RECHAZADO = """
+        {"eventId":"rejection-event-7d11","eventType":"AdditionalInformationRejected","groupId":"proyecto-juan-perez",
+         "reservationProcessId":"process-a92b47d0","holdId":"hold-6c0c2f41","requestEventId":"request-event-8a31",
+         "reason":"INVALID_PHONE_NUMBER","message":"El telefono ingresado no es valido.","expiresAt":"2026-09-10T14:44:50Z",
+         "occurredAt":"2026-09-10T14:36:01Z","schemaVersion":1}
+        """;
+    static final String VENCIDO = """
+        {"eventId":"process-event-7d12","eventType":"AppointmentProcessExpired","groupId":"proyecto-juan-perez",
+         "reservationProcessId":"process-a92b47d0","holdId":"hold-6c0c2f41","requestEventId":"request-event-8a31",
+         "reason":"HOLD_EXPIRED","occurredAt":"2026-09-10T14:44:52Z","schemaVersion":1}
+        """;
+    static final String INVALIDO = """
+        {"eventId":"process-event-7d13","eventType":"AppointmentProcessInvalid","groupId":"proyecto-juan-perez",
+         "reservationProcessId":"process-a92b47d0","holdId":"hold-6c0c2f41","requestEventId":"request-event-8a31",
+         "reason":"REQUEST_EVENT_MISMATCH","occurredAt":"2026-09-10T14:36:01Z","schemaVersion":1}
+        """;
+    static final String CANCELADO = """
+        {"eventId":"cancellation-event-7d14","eventType":"AppointmentCancelled","groupId":"proyecto-juan-perez",
+         "reservationProcessId":"process-a92b47d0","holdId":"hold-6c0c2f41","requestEventId":"request-event-8a31",
+         "reservationId":8251,"professionalId":15,"date":"2026-09-14","startTime":"09:30","status":"CANCELLED",
+         "reason":"Cambio solicitado por el usuario","occurredAt":"2026-09-11T15:10:00Z","schemaVersion":1}
+        """;
+
+    @Test
+    void losCincoResultadosDelContratoSeLeenEnterosSinDegradaciones() {
+        assertThat(ReservationEventMessageMapper.parse(CONFIRMADO)).isEqualTo(
+            evento(new ReservationEvent.AppointmentConfirmed("confirmation-event-7d10", "process-a92b47d0", "hold-6c0c2f41", "request-event-8a31", 8251, Instant.parse("2026-09-10T14:36:01Z")))
+        );
+        assertThat(ReservationEventMessageMapper.parse(RECHAZADO)).isEqualTo(
+            evento(
+                new ReservationEvent.PhoneRejected(
+                    "rejection-event-7d11",
+                    "process-a92b47d0",
+                    "hold-6c0c2f41",
+                    "request-event-8a31",
+                    "INVALID_PHONE_NUMBER",
+                    "El telefono ingresado no es valido.",
+                    Instant.parse("2026-09-10T14:44:50Z")
+                )
+            )
+        );
+        assertThat(ReservationEventMessageMapper.parse(VENCIDO)).isEqualTo(
+            evento(new ReservationEvent.ProcessExpired("process-event-7d12", "process-a92b47d0", "hold-6c0c2f41", "request-event-8a31", "HOLD_EXPIRED"))
+        );
+        assertThat(ReservationEventMessageMapper.parse(INVALIDO)).isEqualTo(
+            evento(new ReservationEvent.ProcessInvalid("process-event-7d13", "process-a92b47d0", "hold-6c0c2f41", "request-event-8a31", "REQUEST_EVENT_MISMATCH"))
+        );
+        assertThat(ReservationEventMessageMapper.parse(CANCELADO)).isEqualTo(
+            evento(
+                new ReservationEvent.AppointmentCancelled(
+                    "cancellation-event-7d14",
+                    "process-a92b47d0",
+                    "hold-6c0c2f41",
+                    "request-event-8a31",
+                    "Cambio solicitado por el usuario",
+                    Instant.parse("2026-09-11T15:10:00Z")
+                )
+            )
+        );
+    }
+
+    @Test
+    void unaCancelacionConReasonNullSeLeeSinDegradar() {
+        assertThat(ReservationEventMessageMapper.parse(CANCELADO.replace("\"Cambio solicitado por el usuario\"", "null")))
+            .isInstanceOfSatisfying(ParsedEvent.Event.class, leido -> {
+                assertThat(((ReservationEvent.AppointmentCancelled) leido.event()).reason()).isNull();
+                assertThat(leido.degradations()).isEmpty();
+            });
+    }
+
+    static Stream<Arguments> degradaciones() {
+        return Stream.of(
+            Arguments.of("confirmación sin occurredAt", CONFIRMADO.replace("\"occurredAt\":\"2026-09-10T14:36:01Z\",", ""), "occurredAt ausente o ilegible: se usa el reloj"),
+            Arguments.of("confirmación con occurredAt ilegible", CONFIRMADO.replace("2026-09-10T14:36:01Z", "ayer"), "occurredAt ausente o ilegible: se usa el reloj"),
+            Arguments.of("cancelación sin occurredAt", CANCELADO.replace("\"occurredAt\":\"2026-09-11T15:10:00Z\",", ""), "occurredAt ausente o ilegible: se usa el reloj"),
+            Arguments.of("rechazo sin reason", RECHAZADO.replace("\"reason\":\"INVALID_PHONE_NUMBER\",", ""), "reason ausente: se guarda UNSPECIFIED"),
+            Arguments.of("rechazo con reason en blanco", RECHAZADO.replace("\"INVALID_PHONE_NUMBER\"", "\" \""), "reason ausente: se guarda UNSPECIFIED"),
+            Arguments.of("vencido sin reason", VENCIDO.replace("\"reason\":\"HOLD_EXPIRED\",", ""), "reason ausente: se guarda UNSPECIFIED"),
+            Arguments.of("inválido sin reason", INVALIDO.replace("\"reason\":\"REQUEST_EVENT_MISMATCH\",", ""), "reason ausente: se guarda UNSPECIFIED"),
+            Arguments.of("rechazo sin expiresAt", RECHAZADO.replace("\"expiresAt\":\"2026-09-10T14:44:50Z\",", ""), "expiresAt ausente o ilegible: se conserva el vencimiento guardado"),
+            Arguments.of("rechazo con expiresAt ilegible", RECHAZADO.replace("2026-09-10T14:44:50Z", "pronto"), "expiresAt ausente o ilegible: se conserva el vencimiento guardado"),
+            Arguments.of("cancelación con reason de 501", CANCELADO.replace("Cambio solicitado por el usuario", "x".repeat(501)), "reason de 501 caracteres: se recorta a 500")
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("degradaciones")
+    void unDatoQueNoHaceFaltaSeDegradaYElEventoSeAplicaIgual(String caso, String mensaje, String degradacion) {
+        ParsedEvent leido = ReservationEventMessageMapper.parse(mensaje);
+
+        assertThat(leido).isInstanceOfSatisfying(ParsedEvent.Event.class, evento -> assertThat(evento.degradations()).containsExactly(degradacion));
+    }
+
+    @Test
+    void lasDegradacionesDejanLosValoresDeReemplazo() {
+        ReservationEvent.PhoneRejected rechazo = (ReservationEvent.PhoneRejected) ((ParsedEvent.Event) ReservationEventMessageMapper.parse(
+            RECHAZADO.replace("\"reason\":\"INVALID_PHONE_NUMBER\",", "").replace("\"expiresAt\":\"2026-09-10T14:44:50Z\",", "")
+        )).event();
+        assertThat(rechazo.reason()).isEqualTo("UNSPECIFIED");
+        assertThat(rechazo.expiresAt()).isNull();
+
+        ReservationEvent.AppointmentCancelled cancelacion = (ReservationEvent.AppointmentCancelled) ((ParsedEvent.Event) ReservationEventMessageMapper.parse(
+            CANCELADO.replace("Cambio solicitado por el usuario", "x".repeat(501))
+        )).event();
+        assertThat(cancelacion.reason()).hasSize(500);
+    }
+
+    static Stream<Arguments> resultadosMalFormados() {
+        return Stream.of(
+            Arguments.of("confirmación sin reservationId", CONFIRMADO.replace("\"reservationId\":8251,", ""), "falta reservationId o no es positivo"),
+            Arguments.of("confirmación con reservationId 0", CONFIRMADO.replace("8251", "0"), "falta reservationId o no es positivo"),
+            Arguments.of("confirmación con reservationId decimal", CONFIRMADO.replace("8251", "8251.5"), "no es el JSON esperado"),
+            Arguments.of("cancelación sin reservationProcessId", CANCELADO.replace("\"reservationProcessId\":\"process-a92b47d0\",", ""), "falta reservationProcessId"),
+            Arguments.of("vencido sin eventId", VENCIDO.replace("\"eventId\":\"process-event-7d12\",", ""), "falta eventId")
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("resultadosMalFormados")
+    void sinUnDatoQueExigeLaTransicionElResultadoEsMalFormado(String caso, String mensaje, String detalle) {
+        assertThat(ReservationEventMessageMapper.parse(mensaje)).isInstanceOfSatisfying(ParsedEvent.Malformed.class, malo -> assertThat(malo.detail()).isEqualTo(detalle));
+    }
+
+    private static ParsedEvent evento(ReservationEvent evento) {
+        return new ParsedEvent.Event(evento, List.of());
     }
 }

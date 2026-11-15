@@ -162,14 +162,13 @@ class ReservationEventListenerIT {
     }
 
     @Test
-    void unTipoDesconocidoYUnResultadoTodaviaNoProcesadoSeConfirmanSinRegistrarse(CapturedOutput salida) {
+    void cu07_1a_unTipoDesconocidoSeConfirmaSinRegistrarse(CapturedOutput salida) {
         publicar(PROCESO, "{\"eventId\":\"" + eventoNuevo() + "\",\"eventType\":\"OtroTipo\",\"reservationProcessId\":\"" + PROCESO + "\"}");
-        publicar(PROCESO, "{\"eventId\":\"" + eventoNuevo() + "\",\"eventType\":\"AppointmentConfirmed\",\"reservationProcessId\":\"" + PROCESO + "\"}");
         esperarQueSeConfirmeTodo();
 
         assertThat(eventos()).isEmpty();
         assertThat(fila()).startsWith("WAITING_FOR_PHONE_REQUEST|");
-        assertThat(salida.getAll()).contains("eventType desconocido", "AppointmentConfirmed", "los resultados todavía no se procesan");
+        assertThat(salida.getAll()).contains("eventType desconocido");
     }
 
     @Test
@@ -227,8 +226,109 @@ class ReservationEventListenerIT {
     }
 
     // ---------------------------------------------------------------------------------------------------------------
+    // CU-07
+    // ---------------------------------------------------------------------------------------------------------------
+
+    @Test
+    void cu07_losCincoResultadosSeAplicanConSusDatos(CapturedOutput salida) {
+        enEstado(ReservationProcessStatus.PHONE_SUBMITTED);
+        publicar(PROCESO, resultado("AppointmentConfirmed", eventoNuevo(), ",\"reservationId\":8251,\"occurredAt\":\"2026-12-14T12:36:01Z\""));
+        esperarQueSeConfirmeTodo();
+        assertThat(columnas("status || '|' || reservation_id || '|' || to_char(confirmed_at, 'HH24:MI:SS')")).isEqualTo("CONFIRMED|8251|12:36:01");
+
+        publicar(PROCESO, resultado("AppointmentCancelled", eventoNuevo(), ",\"reason\":null,\"occurredAt\":\"2026-12-14T13:10:00Z\""));
+        esperarQueSeConfirmeTodo();
+        assertThat(columnas("status || '|' || coalesce(cancellation_reason, 'null') || '|' || to_char(cancelled_at, 'HH24:MI:SS')")).isEqualTo("CANCELLED|null|13:10:00");
+
+        enEstado(ReservationProcessStatus.PHONE_SUBMITTED);
+        publicar(
+            PROCESO,
+            resultado("AdditionalInformationRejected", eventoNuevo(), ",\"reason\":\"INVALID_PHONE_NUMBER\",\"message\":\"No valido.\",\"expiresAt\":\"2026-12-14T12:50:00Z\"")
+        );
+        esperarQueSeConfirmeTodo();
+        assertThat(columnas("status || '|' || rejection_reason || '|' || rejection_message || '|' || to_char(expires_at, 'HH24:MI:SS')")).isEqualTo(
+            "PHONE_REJECTED|INVALID_PHONE_NUMBER|No valido.|12:50:00"
+        );
+
+        enEstado(ReservationProcessStatus.WAITING_FOR_PHONE_REQUEST);
+        publicar(PROCESO, resultado("AppointmentProcessExpired", eventoNuevo(), ",\"reason\":\"HOLD_EXPIRED\""));
+        esperarQueSeConfirmeTodo();
+        assertThat(columnas("status || '|' || closing_reason")).isEqualTo("EXPIRED|HOLD_EXPIRED");
+
+        enEstado(ReservationProcessStatus.PHONE_REQUESTED);
+        publicar(PROCESO, resultado("AppointmentProcessInvalid", eventoNuevo(), ",\"reason\":\"REQUEST_EVENT_MISMATCH\""));
+        esperarQueSeConfirmeTodo();
+        assertThat(columnas("status || '|' || closing_reason")).isEqualTo("INVALID|REQUEST_EVENT_MISMATCH");
+
+        assertThat(eventos()).hasSize(5);
+        assertThat(salida.getAll()).doesNotContain("No valido.");
+    }
+
+    @Test
+    void cu07_2_1a_yElTardio_unResultadoDuplicadoYUnoTardioSobreUnFinalNoCambianNada() {
+        enEstado(ReservationProcessStatus.PHONE_SUBMITTED);
+        String vencimiento = eventoNuevo();
+        publicar(PROCESO, resultado("AppointmentProcessExpired", vencimiento, ",\"reason\":\"HOLD_EXPIRED\""));
+        esperarQueSeConfirmeTodo();
+        long version = version();
+
+        publicar(PROCESO, resultado("AppointmentProcessExpired", vencimiento, ",\"reason\":\"HOLD_EXPIRED\""));
+        String tardio = eventoNuevo();
+        publicar(PROCESO, resultado("AppointmentConfirmed", tardio, ",\"reservationId\":8251,\"occurredAt\":\"2026-12-14T12:36:01Z\""));
+        esperarQueSeConfirmeTodo();
+
+        assertThat(columnas("status || '|' || coalesce(reservation_id::text, 'sin reserva')")).isEqualTo("EXPIRED|sin reserva");
+        assertThat(version()).isEqualTo(version);
+        assertThat(eventos()).containsExactlyInAnyOrder(vencimiento, tardio);
+    }
+
+    @Test
+    void cu07_2_3b_unInvalidoSobreUnConfirmadoNoLoCambiaYDejaUnaAdvertencia(CapturedOutput salida) {
+        enEstado(ReservationProcessStatus.CONFIRMED);
+        String evento = eventoNuevo();
+
+        publicar(PROCESO, resultado("AppointmentProcessInvalid", evento, ",\"reason\":\"REQUEST_EVENT_MISMATCH\""));
+        esperarQueSeConfirmeTodo();
+
+        assertThat(columnas("status")).isEqualTo("CONFIRMED");
+        assertThat(eventos()).containsExactly(evento);
+        assertThat(salida.getAll()).contains("WARN").contains("la cátedra informa inválido un proceso CONFIRMED");
+    }
+
+    @Test
+    void cu07_unResultadoSinOccurredAtSeAplicaConElRelojYDejaUnaAdvertencia(CapturedOutput salida) {
+        enEstado(ReservationProcessStatus.PHONE_SUBMITTED);
+
+        publicar(PROCESO, resultado("AppointmentConfirmed", eventoNuevo(), ",\"reservationId\":8251"));
+        esperarQueSeConfirmeTodo();
+
+        assertThat(columnas("status")).isEqualTo("CONFIRMED");
+        assertThat(salida.getAll()).contains("occurredAt ausente o ilegible: se usa el reloj; se aplica igual");
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
     // Ayudas
     // ---------------------------------------------------------------------------------------------------------------
+
+    /** Reemplaza el proceso de prueba por uno en ese estado, con los datos que exige el estado y el mismo reservationProcessId. */
+    private void enEstado(ReservationProcessStatus estado) {
+        tx.executeWithoutResult(status -> em.createNativeQuery("delete from reservation_process").executeUpdate());
+        long userId = tx.execute(status -> userRepository.findOneByLogin("reserva-kafka").orElseThrow().getId());
+        ReservationProcessEntity entidad = ReservationTestDatabase.fila(mapper, estado, userId, 1);
+        tx.executeWithoutResult(status -> jpa.saveAndFlush(entidad));
+    }
+
+    /** Un resultado del contrato (§15.6 a §15.10) para el proceso de prueba, con los campos propios de su tipo. */
+    private static String resultado(String tipo, String eventId, String campos) {
+        return (
+            "{\"eventId\":\"" + eventId + "\",\"eventType\":\"" + tipo + "\",\"groupId\":\"proyecto-de-prueba\",\"reservationProcessId\":\"" + PROCESO +
+            "\",\"holdId\":\"hold-6c0c2f41-1\",\"requestEventId\":\"request-event-8a31\"" + campos + ",\"schemaVersion\":1}"
+        );
+    }
+
+    private String columnas(String expresion) {
+        return tx.execute(status -> (String) em.createNativeQuery("select " + expresion + " from reservation_process").getSingleResult());
+    }
 
     private static String eventoNuevo() {
         return "request-event-" + UUID.randomUUID();
