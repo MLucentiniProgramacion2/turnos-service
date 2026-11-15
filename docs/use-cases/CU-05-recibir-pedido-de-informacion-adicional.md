@@ -60,6 +60,24 @@ confirmó inicialmente el hold.
   de 1 s, 2 s y 4 s. Si se agotan, se registra el error y se commitea el offset. El proceso queda
   en su estado y lo recupera CU-11 (DPT-22, DPT-09).
 
+## Notas de implementación (issue #12)
+
+Detalle técnico en el [ADR 0006](../adr/0006-kafka-en-turnos.md).
+
+- **2a:** el mensaje es mal formado si no se puede leer o si le falta (o está en blanco) `eventId`,
+  `eventType`, `reservationProcessId`, `holdId` o `expiresAt`, o si `expiresAt` no es un instante
+  ISO-8601. Un mal formado no se registra como procesado: no tiene un `eventId` confiable.
+- **3.1:** la barrera es "insertar y mirar las filas" (`insert ... on conflict do nothing`), no
+  "consultar y después insertar": con dos entregas simultáneas, la segunda espera a la primera.
+- **3.3c:** queda como advertencia en el log (`NOT_FORWARD`); el `requestEventId` guardado sigue siendo
+  el del primer pedido.
+- **`holdId` distinto del guardado:** no debería pasar. Se aplica igual por `reservationProcessId`, que
+  es la clave del contrato, y queda una advertencia.
+- **3a:** la transacción tiene un plazo de 10 s; un choque de versión con un pedido HTTP sobre el
+  mismo proceso también se reintenta, y el segundo intento lee el estado nuevo.
+- **Log:** el tipo, el `eventId`, la partición, el offset y la clave. Nunca el `message` de la
+  cátedra, que es para la app.
+
 ## Postcondiciones
 
 - **De éxito:** el proceso está en `PHONE_REQUESTED` con `requestEventId` y `expiresAt` guardados,
