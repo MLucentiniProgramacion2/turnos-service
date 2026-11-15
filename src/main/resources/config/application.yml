@@ -243,6 +243,13 @@ catedra:
     # DPT-08: 2 s para conectar y 5 s para la respuesta completa.
     connect-timeout: ${CATEDRA_CONNECT_TIMEOUT:2s}
     read-timeout: ${CATEDRA_READ_TIMEOUT:5s}
+  # Kafka de la cátedra (contrato §15, ADR 0006). Ver CatedraKafkaProperties: el resto de la configuración está
+  # en Java y spring.kafka.* no se usa. Sin valor por defecto: si falta una variable, la aplicación no arranca.
+  # Los valores reales salen de GET /api/student/integration y van solo en .env.
+  kafka:
+    bootstrap-servers: ${CATEDRA_KAFKA_BOOTSTRAP_SERVERS:}
+    actions-topic: ${CATEDRA_KAFKA_ACTIONS_TOPIC:}
+    consumer-group: ${CATEDRA_KAFKA_CONSUMER_GROUP:}
 
 # Servicio de catálogo: agenda vigente (CU-07 del catálogo). Sin valor por defecto: si falta, la aplicación
 # no arranca. Local: http://localhost:8081. DPT-13: 2 s y 5 s, sin reintentos.

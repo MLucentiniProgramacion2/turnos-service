@@ -3,8 +3,11 @@ package ar.edu.um.programacion2.turnos.reservation.infrastructure.config;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import java.time.Duration;
 import java.time.ZoneId;
 import lombok.Getter;
+import org.hibernate.validator.constraints.time.DurationMax;
+import org.hibernate.validator.constraints.time.DurationMin;
 import lombok.Setter;
 import lombok.ToString;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -33,4 +36,13 @@ public class ReservationProperties {
     @Min(1)
     @Max(365)
     private Integer bookingHorizonDays = 60;
+
+    /**
+     * Plazo de la transacción que procesa un evento de Kafka (CU-05 y CU-07): acota cuánto puede quedar trabado un intento
+     * esperando un bloqueo de la base. Entra en la cuenta del peor caso del listener (ADR 0006).
+     */
+    @NotNull
+    @DurationMin(seconds = 1)
+    @DurationMax(seconds = 60)
+    private Duration eventTransactionTimeout = Duration.ofSeconds(10);
 }

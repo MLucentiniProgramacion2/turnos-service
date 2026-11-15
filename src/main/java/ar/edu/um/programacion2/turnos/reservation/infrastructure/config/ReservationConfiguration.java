@@ -1,10 +1,13 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.config;
 
+import ar.edu.um.programacion2.turnos.reservation.application.usecases.EventTransactions;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityPolicy;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.ReservationProcessIdGenerator;
 import java.time.Clock;
 import java.util.UUID;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -37,5 +40,13 @@ public class ReservationConfiguration {
     @Bean
     public ReservationProcessIdGenerator reservationProcessIdGenerator() {
         return () -> new ReservationProcessId(UUID.randomUUID());
+    }
+
+    /** Las transacciones de los eventos de Kafka, con el plazo de {@code reservation.event-transaction-timeout}. */
+    @Bean
+    public EventTransactions eventTransactions(PlatformTransactionManager transactionManager, ReservationProperties properties) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setTimeout(Math.toIntExact(properties.getEventTransactionTimeout().toSeconds()));
+        return new EventTransactions(template);
     }
 }

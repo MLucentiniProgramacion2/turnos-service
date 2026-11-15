@@ -1,7 +1,9 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
+import ar.edu.um.programacion2.turnos.reservation.application.usecases.EventTransactions;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityPolicy;
 import java.time.Clock;
 import java.time.ZoneId;
@@ -11,11 +13,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.ConfigurationPropertiesBindException;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /** Las reglas de fechas (DPT-10) se validan al arrancar: una zona o un horizonte inválidos no levantan la aplicación. */
 class ReservationPropertiesTest {
 
-    private final ApplicationContextRunner runner = new ApplicationContextRunner().withUserConfiguration(ReservationConfiguration.class);
+    private final ApplicationContextRunner runner = new ApplicationContextRunner()
+        .withUserConfiguration(ReservationConfiguration.class)
+        .withBean(PlatformTransactionManager.class, () -> mock(PlatformTransactionManager.class));
 
     @Test
     void sinConfigurarNadaValenLosValoresDeDpt10() {
@@ -71,5 +76,24 @@ class ReservationPropertiesTest {
     @Test
     void elRelojDeLaReservaEsUtc() {
         runner.run(context -> assertThat(context.getBean(Clock.class).getZone()).isEqualTo(ZoneOffset.UTC));
+    }
+
+    @Test
+    void lasTransaccionesDeLosEventosTienenUnPlazoDe10SegundosPorDefecto() {
+        runner.run(context -> assertThat(context.getBean(EventTransactions.class).template().getTimeout()).isEqualTo(10));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "0s", "500ms", "61s" })
+    void conUnPlazoDeTransaccionDeEventosFueraDeRangoNoArranca(String plazo) {
+        runner
+            .withPropertyValues("reservation.event-transaction-timeout=" + plazo)
+            .run(context -> assertThat(context.getStartupFailure()).isNotNull().hasStackTraceContaining("reservation.event-transaction-timeout"));
+    }
+
+    @Test
+    void lasTransaccionesDeLosEventosNoReemplazanAlTransactionTemplateDeSpringBoot() {
+        // Si EventTransactions fuera un TransactionTemplate, la autoconfiguración de Spring Boot no crearía el suyo.
+        runner.run(context -> assertThat(context.getBeansOfType(org.springframework.transaction.support.TransactionOperations.class)).isEmpty());
     }
 }
