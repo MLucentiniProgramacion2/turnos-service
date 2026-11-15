@@ -122,8 +122,42 @@ en `ReservationEventListenerIT`: el intento 1 falló con `ObjectOptimisticLockin
 2 leyó el estado nuevo y lo avanzó.
 
 **Qué se registra:** todo evento que llegó a la transacción, con o sin efecto, también los de procesos
-que no existen. **No se registran** un mensaje mal formado, un tipo desconocido ni (hasta la parte 5
-del issue #12) un resultado de CU-07: no tienen un `eventId` confiable o todavía no se procesan.
+que no existen. **No se registran** un mensaje mal formado ni uno de un tipo desconocido: no tienen un
+`eventId` confiable, o no hay nada que aplicar.
+
+### Qué es "mal formado": solo lo que la transición necesita
+
+Un mal formado se confirma sin aplicar, y sin la reconciliación (CU-11) el resultado se perdería. Por
+eso es obligatorio **solo lo que hace falta para aplicar la transición sin romper un invariante**:
+
+| Tipo | Obligatorio | Si falta otra cosa |
+| --- | --- | --- |
+| todos | `eventId`, `eventType`, `reservationProcessId` | — |
+| `AdditionalInformationRequested` | `holdId`, `expiresAt` (el modelo los guarda) | `message` puede faltar |
+| `AppointmentConfirmed` | `reservationId` positivo (el `CHECK` de `CONFIRMED` lo exige) | `occurredAt` ausente o ilegible: el reloj |
+| `AdditionalInformationRejected` | — | `reason` ausente: `UNSPECIFIED`; `expiresAt` ausente o ilegible: se conserva el guardado |
+| `AppointmentProcessExpired`, `AppointmentProcessInvalid` | — | `reason` ausente: `UNSPECIFIED` |
+| `AppointmentCancelled` | — | `occurredAt` ausente: el reloj; `reason` de más de 500 caracteres: se recorta (es el máximo de la cátedra, §12) |
+
+Cada reemplazo queda como advertencia en el log (`se aplica igual`). Es el mismo criterio que el
+catálogo: no rechazar un dato real por algo que no se usa. Los textos de la cátedra (`reason` y
+`message` de rechazos y cierres) van en columnas `text`, sin largo máximo, salvo el motivo de la
+cancelación (`varchar(500)`).
+
+### El nivel del log, por resultado
+
+| Resultado | Nivel | Por qué |
+| --- | --- | --- |
+| Aplicado | INFO | lo normal |
+| Duplicado (`eventId` ya registrado) | INFO | entrega al menos una vez: es normal, y es evidencia del §11 del enunciado |
+| Sin efecto por `FINAL_STATE` o `CONFIRMED_ONLY_CANCELS` | INFO | un tardío o un duplicado con otro `eventId`: normal con Kafka |
+| `AppointmentProcessInvalid` sobre `CONFIRMED` (CU-07 2.3b) | WARN | la cátedra y turnos no coinciden: lo revisa la reconciliación |
+| Proceso que no existe (2.2a) | WARN | no debería pasar salvo con la base reseteada |
+| Sin efecto por `NOT_APPLICABLE` o `NOT_FORWARD` (2.3c, 2.3e, CU-05 3.3c) | WARN | un hecho que no corresponde al estado |
+| Mal formado o tipo desconocido | WARN | se descarta sin reintento |
+| Un dato degradado | WARN | se aplica igual |
+| Falla inesperada, cada intento | WARN | reintentos observables (§18.4) |
+| Reintentos agotados | ERROR | el evento queda sin aplicar hasta CU-11 |
 
 ## Decisión: el productor
 
