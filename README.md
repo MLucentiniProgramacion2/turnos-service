@@ -53,6 +53,7 @@ Opcionales, con su valor por defecto:
 | `SERVICE_TOKEN_LIFETIME` | `5m` | Vida del token de servicio hacia el catálogo, de `30s` a `5m`; con más, la aplicación no arranca ([ADR 0005](docs/adr/0005-token-de-servicio.md)) |
 | `RESERVATION_TIME_ZONE` | `America/Argentina/Mendoza` | Zona horaria de atención: "hoy" y "ahora" para ofrecer y reservar turnos (DPT-10). Una zona que no existe impide arrancar |
 | `RESERVATION_BOOKING_HORIZON_DAYS` | `60` | Hasta cuántos días adelante se ofrecen turnos, de 1 a 365 |
+| `RESERVATION_RECONCILIATION_INTERVAL` | `60s` | Cada cuánto corre la reconciliación de procesos pendientes (CU-11), desde que termina la anterior; la primera corre al arrancar. De `10s` a `10m` |
 
 ## Uso
 
@@ -101,10 +102,20 @@ curl -s "http://localhost:8080/api/professionals/202/availability?from=2026-12-1
 
 ### Un usuario trabado en una reserva en curso
 
-Mientras no exista la reconciliación (CU-11, otro issue), un proceso que quedó en un estado intermedio
-(por ejemplo, `HOLD_CREATED` porque el confirm no respondió, o porque se perdió un evento) impide al
-usuario iniciar otra reserva (índice único parcial, DPT-17). Se destraba a mano, pasándolo a `FAILED`
-**después de comprobar en la cátedra** (`GET /api/appointments`) que ese proceso no quedó confirmado:
+Un proceso en un estado intermedio impide iniciar otra reserva (índice único parcial, DPT-17). La
+**reconciliación** (CU-11, al arrancar y cada 60 s) los cierra solos, preguntándole a la cátedra con los IDs
+guardados:
+
+| Caso | Se destraba solo |
+| --- | --- |
+| `CREATING_HOLD` que quedó a medias (por ejemplo, el hold se creó y no se pudo guardar) | Pasa a `FAILED` con más de 1 minuto sin cambios: entre 1 y 2 minutos |
+| `HOLD_CREATED` porque el confirm no respondió | Con más de 1 minuto: si la cátedra no lo tiene, se reintenta el confirm; si lo tiene, converge. Entre 1 y 2 minutos |
+| Se perdió un evento (esperando el pedido de teléfono o el resultado) | Pasado `expiresAt` + 1 minuto, según lo que informe la cátedra (`CONFIRMED`, `CANCELLED` o `EXPIRED`): entre 11 y 12 minutos después del hold |
+| La cátedra sigue en `PHONE_PENDING` | Se espera hasta `expiresAt` + 10 minutos; después pasa a `EXPIRED` con una advertencia |
+
+Si la cátedra no responde, el proceso queda como está y lo toma la ejecución siguiente. Como **último
+recurso** (por ejemplo, con la cátedra caída por mucho tiempo), se puede pasar a `FAILED` a mano, **después
+de comprobar en la cátedra** (`GET /api/appointments`) que ese proceso no quedó confirmado:
 
 ```bash
 docker exec -it turnos-db psql -U turnos_app -d turnos -c \

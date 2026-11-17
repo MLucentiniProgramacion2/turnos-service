@@ -5,8 +5,12 @@ import static org.mockito.Mockito.mock;
 
 import ar.edu.um.programacion2.turnos.reservation.application.usecases.EventTransactions;
 import ar.edu.um.programacion2.turnos.reservation.application.usecases.ReadTransactions;
+import ar.edu.um.programacion2.turnos.reservation.application.usecases.ReconciliationLimits;
+import ar.edu.um.programacion2.turnos.reservation.application.usecases.RetryBackoff;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityPolicy;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReconciliationPolicy;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
@@ -107,5 +111,51 @@ class ReservationPropertiesTest {
             assertThat(consultas.template().isReadOnly()).isTrue();
             assertThat(consultas.template().getIsolationLevel()).isEqualTo(TransactionDefinition.ISOLATION_REPEATABLE_READ);
         });
+    }
+
+    @Test
+    void laReconciliacionTieneLosValoresDeDpt09YDpt24PorDefecto() {
+        runner.run(context -> {
+            ReservationProperties.Reconciliation reconciliacion = context.getBean(ReservationProperties.class).getReconciliation();
+            assertThat(reconciliacion.isEnabled()).isTrue();
+            assertThat(reconciliacion.getInterval()).isEqualTo(Duration.ofSeconds(60));
+            assertThat(reconciliacion.getMinAge()).isEqualTo(Duration.ofMinutes(1));
+            assertThat(reconciliacion.getExpiryMargin()).isEqualTo(Duration.ofMinutes(1));
+            assertThat(reconciliacion.getPhonePendingMaxWait()).isEqualTo(Duration.ofMinutes(10));
+            assertThat(reconciliacion.getRetryDelays()).containsExactly(Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(4));
+            assertThat(reconciliacion.getMaxProcessesPerRun()).isEqualTo(50);
+            assertThat(reconciliacion.getRunDeadline()).isEqualTo(Duration.ofMinutes(2));
+            assertThat(context.getBean(ReconciliationPolicy.class)).isEqualTo(
+                new ReconciliationPolicy(Duration.ofMinutes(1), Duration.ofMinutes(1), Duration.ofMinutes(10))
+            );
+            assertThat(context.getBean(ReconciliationLimits.class)).isEqualTo(new ReconciliationLimits(50, Duration.ofMinutes(2)));
+            assertThat(context.getBean(RetryBackoff.class).maxRetries()).isEqualTo(3);
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+            "reservation.reconciliation.interval=9s",
+            "reservation.reconciliation.interval=11m",
+            "reservation.reconciliation.interval=0s",
+            "reservation.reconciliation.min-age=29s",
+            "reservation.reconciliation.expiry-margin=-1s",
+            "reservation.reconciliation.phone-pending-max-wait=1m",
+            "reservation.reconciliation.phone-pending-max-wait=2h",
+            "reservation.reconciliation.retry-delays=1s,2m",
+            "reservation.reconciliation.max-processes-per-run=0",
+            "reservation.reconciliation.run-deadline=10s",
+        }
+    )
+    void unaReconciliacionMalConfiguradaNoArranca(String propiedad) {
+        runner.withPropertyValues(propiedad).run(context -> assertThat(context.getStartupFailure()).isNotNull().hasStackTraceContaining("reservation.reconciliation"));
+    }
+
+    @Test
+    void elIntervaloSeConfiguraConSuVariable() {
+        runner
+            .withPropertyValues("reservation.reconciliation.interval=30s")
+            .run(context -> assertThat(context.getBean(ReservationProperties.class).getReconciliation().getInterval()).isEqualTo(Duration.ofSeconds(30)));
     }
 }

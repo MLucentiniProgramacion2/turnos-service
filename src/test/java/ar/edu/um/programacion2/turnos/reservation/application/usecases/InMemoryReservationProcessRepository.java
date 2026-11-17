@@ -137,6 +137,18 @@ class InMemoryReservationProcessRepository implements ReservationProcessReposito
         return new ResultPage<>(items, page.number(), page.size(), all.size());
     }
 
+    @Override
+    public List<ReservationProcess> findIntermediates() {
+        transactions.requireActive();
+        return rows
+            .values()
+            .stream()
+            .filter(row -> row.getStatus().isIntermediate())
+            .sorted(Comparator.comparing(ReservationProcess::getStatusChangedAt).thenComparing(row -> row.getId().value()))
+            .map(this::copy)
+            .toList();
+    }
+
     // ---------------------------------------------------------------------------------------------------------------
     // Para armar y mirar el escenario (sin transacción: es el test, no el caso de uso)
     // ---------------------------------------------------------------------------------------------------------------

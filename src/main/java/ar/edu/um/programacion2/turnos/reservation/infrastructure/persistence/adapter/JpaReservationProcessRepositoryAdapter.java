@@ -123,6 +123,11 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
         return new ResultPage<>(found.getContent().stream().map(mapper::toDomain).toList(), page.number(), page.size(), found.getTotalElements());
     }
 
+    @Override
+    public List<ReservationProcess> findIntermediates() {
+        return jpaRepository.findByStatusInOrderByStatusChangedAtAscIdAsc(INTERMEDIATE).stream().map(mapper::toDomain).toList();
+    }
+
     private static Set<ReservationProcessStatus> intermediateOrConfirmed() {
         Set<ReservationProcessStatus> statuses = EnumSet.copyOf(ReservationProcessStatus.intermediates());
         statuses.add(ReservationProcessStatus.CONFIRMED);

@@ -90,6 +90,12 @@ application:
     # termina antes de que Hibernate valide el esquema, sin depender del nombre del perfil.
     async-start: false
 
+reservation:
+  reconciliation:
+    # Apagada por lo mismo que el listener: cada contexto reconciliaría contra una cátedra que no existe y escribiría
+    # procesos. La prenden solo sus tests, o llaman al caso de uso directo.
+    enabled: false
+
 catedra:
   api:
     # Solo para tests: valores falsos. Nadie escucha en el puerto 1, así que ningún test de contexto

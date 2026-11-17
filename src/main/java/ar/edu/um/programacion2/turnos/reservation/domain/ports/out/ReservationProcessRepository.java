@@ -7,6 +7,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProces
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ResultPage;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -59,4 +60,10 @@ public interface ReservationProcessRepository {
      * @param statuses los estados pedidos; vacío es "todos"
      */
     ResultPage<ReservationProcess> findPageByOwner(long userId, Set<ReservationProcessStatus> statuses, PageQuery page);
+
+    /**
+     * Todos los procesos intermedios (CU-11), del cambio de estado más viejo al más nuevo: si la ejecución se corta por el
+     * tope o el plazo, los que quedan son los más recientes. Hay a lo sumo uno por usuario (DPT-17).
+     */
+    List<ReservationProcess> findIntermediates();
 }

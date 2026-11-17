@@ -7,6 +7,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.model.EventOutcome;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservations;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservationsQuery;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcess;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReconciliationReport;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationEvent;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationCommand;
@@ -19,6 +20,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetReservation
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandlePhoneRequestedUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandleProcessOutcomeUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.ListMyReservationsUseCase;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.ReconcilePendingProcessesUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
 import java.time.LocalDate;
@@ -42,6 +44,7 @@ public class ReservationService {
     private final GetReservationProcessUseCase getReservationProcessUseCase;
     private final ListMyReservationsUseCase listMyReservationsUseCase;
     private final CancelReservationUseCase cancelReservationUseCase;
+    private final ReconcilePendingProcessesUseCase reconcilePendingProcessesUseCase;
 
     /** CU-03. */
     public AvailabilityResult getAvailability(long professionalId, LocalDate from, LocalDate to, String requestedBy) {
@@ -81,5 +84,10 @@ public class ReservationService {
     /** CU-10. */
     public CancelReservationResult cancelReservation(CancelReservationCommand command) {
         return cancelReservationUseCase.cancel(command);
+    }
+
+    /** CU-11. */
+    public ReconciliationReport reconcilePendingProcesses() {
+        return reconcilePendingProcessesUseCase.reconcile();
     }
 }

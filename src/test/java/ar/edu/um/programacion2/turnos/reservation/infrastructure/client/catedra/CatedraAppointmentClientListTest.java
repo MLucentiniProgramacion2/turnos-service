@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
@@ -360,6 +361,41 @@ class CatedraAppointmentClientListTest {
 
         assertThatThrownBy(this::listar).isInstanceOf(CatedraUnavailableException.class);
         assertThat(catedra.requests()).hasSize(2);
+    }
+
+    /**
+     * Medido para el apagado de CU-11: al interrumpir el hilo, un pedido en vuelo <strong>no espera su timeout</strong>. El
+     * cliente del JDK corta la espera, la falla llega como "no disponible" y el hilo conserva la marca de interrupción.
+     */
+    @Test
+    void unPedidoEnVueloSeCortaAlInterrumpirElHilo() throws Exception {
+        properties.setReadTimeout(Duration.ofSeconds(5));
+        java.util.concurrent.CountDownLatch llego = new java.util.concurrent.CountDownLatch(1);
+        catedra.beforeResponding("/api/appointments", llego::countDown);
+        catedra.readBodyThenHang();
+        AtomicReference<Throwable> falla = new AtomicReference<>();
+        java.util.concurrent.atomic.AtomicBoolean siguioInterrumpido = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread hilo = new Thread(() -> {
+            try {
+                listar();
+            } catch (RuntimeException e) {
+                falla.set(e);
+                siguioInterrumpido.set(Thread.currentThread().isInterrupted());
+            }
+        });
+        hilo.start();
+        assertThat(llego.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+
+        long antes = System.nanoTime();
+        hilo.interrupt();
+        hilo.join(10_000);
+        long tardo = Duration.ofNanos(System.nanoTime() - antes).toMillis();
+
+        assertThat(hilo.isAlive()).isFalse();
+        assertThat(tardo).as("ms desde la interrupción").isLessThan(1000);
+        assertThat(falla.get()).isInstanceOf(CatedraUnavailableException.class);
+        // Y el hilo sigue marcado como interrumpido: la próxima espera del backoff de CU-11 corta la ejecución.
+        assertThat(siguioInterrumpido.get()).isTrue();
     }
 
     // ---------------------------------------------------------------------------------------------------------------

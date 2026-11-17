@@ -226,6 +226,11 @@ reservation:
   time-zone: ${RESERVATION_TIME_ZONE:America/Argentina/Mendoza}
   # Se ofrecen y se reservan turnos desde hoy hasta hoy más estos días.
   booking-horizon-days: ${RESERVATION_BOOKING_HORIZON_DAYS:60}
+  # Reconciliación de procesos pendientes (CU-11): al arrancar y después cada este intervalo, contado desde que
+  # termina la anterior. De 10 s a 10 min; fuera de rango no arranca. El resto de reservation.reconciliation.*
+  # (antigüedad mínima, márgenes, reintentos y topes) tiene sus valores en ReservationProperties.
+  reconciliation:
+    interval: ${RESERVATION_RECONCILIATION_INTERVAL:60s}
 
 # Token técnico de servicio hacia el catálogo (DPT-16, ADR 0005). Como máximo 5 min, o el catálogo
 # responde 403 a cada pedido: con más, la aplicación no arranca.

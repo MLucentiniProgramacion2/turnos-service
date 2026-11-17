@@ -2,7 +2,10 @@ package ar.edu.um.programacion2.turnos.reservation.infrastructure.config;
 
 import ar.edu.um.programacion2.turnos.reservation.application.usecases.EventTransactions;
 import ar.edu.um.programacion2.turnos.reservation.application.usecases.ReadTransactions;
+import ar.edu.um.programacion2.turnos.reservation.application.usecases.ReconciliationLimits;
+import ar.edu.um.programacion2.turnos.reservation.application.usecases.RetryBackoff;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityPolicy;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReconciliationPolicy;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.EventIdGenerator;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.ReservationProcessIdGenerator;
@@ -69,5 +72,25 @@ public class ReservationConfiguration {
     @Bean
     public EventIdGenerator eventIdGenerator() {
         return () -> UUID.randomUUID().toString();
+    }
+
+    /** La tabla de CU-11, con los plazos de DPT-09 y DPT-24. */
+    @Bean
+    public ReconciliationPolicy reconciliationPolicy(ReservationProperties properties) {
+        ReservationProperties.Reconciliation reconciliation = properties.getReconciliation();
+        return new ReconciliationPolicy(reconciliation.getMinAge(), reconciliation.getExpiryMargin(), reconciliation.getPhonePendingMaxWait());
+    }
+
+    /** Las cotas de una ejecución de CU-11. */
+    @Bean
+    public ReconciliationLimits reconciliationLimits(ReservationProperties properties) {
+        ReservationProperties.Reconciliation reconciliation = properties.getReconciliation();
+        return new ReconciliationLimits(reconciliation.getMaxProcessesPerRun(), reconciliation.getRunDeadline());
+    }
+
+    /** Las esperas entre reintentos de CU-11 (DPT-08), con {@code Thread::sleep}: se cortan al interrumpir el hilo. */
+    @Bean
+    public RetryBackoff reconciliationRetryBackoff(ReservationProperties properties) {
+        return new RetryBackoff(properties.getReconciliation().getRetryDelays(), Thread::sleep);
     }
 }

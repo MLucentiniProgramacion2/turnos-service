@@ -25,6 +25,12 @@ public interface JpaReservationProcessRepository extends JpaRepository<Reservati
      */
     Page<ReservationProcessEntity> findByUserIdAndStatusIn(Long userId, Collection<ReservationProcessStatus> statuses, Pageable pageable);
 
+    /**
+     * Consulta derivada (CU-11): los procesos en esos estados, del último cambio de estado más viejo al más nuevo. Con los
+     * intermedios, PostgreSQL usa el índice único parcial (medido con 10 000 procesos, #14).
+     */
+    List<ReservationProcessEntity> findByStatusInOrderByStatusChangedAtAscIdAsc(Collection<ReservationProcessStatus> statuses);
+
     /** Consulta derivada: el proceso con ese ID de la cátedra (columna única). */
     Optional<ReservationProcessEntity> findByReservationProcessId(String reservationProcessId);
 

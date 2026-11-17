@@ -135,7 +135,21 @@ se mandan.
 | `rejection` | en `PHONE_REJECTED` (y después) | El último rechazo del teléfono: `reason` y `message` de la cátedra |
 | `confirmation` | en `CONFIRMED` (y `CANCELLED`, si se conoce) | `confirmedAt`: cuándo la confirmó la cátedra |
 | `cancellation` | en `CANCELLED` | `reason` (puede faltar) y `cancelledAt` |
-| `closing` | en `EXPIRED`, `INVALID` y `FAILED` | `reason`: un código (de la cátedra, o propio como `HOLD_OUTCOME_UNKNOWN`), no un texto para mostrar |
+| `closing` | en `EXPIRED`, `INVALID` y `FAILED` | `reason`: un código (de la cátedra o propio), no un texto para mostrar. Ver la tabla de abajo |
+
+Los valores de `closing.reason`:
+
+| Estado | `reason` | Quién lo pone | Qué pasó |
+| --- | --- | --- | --- |
+| `FAILED` | `HOLD_NOT_SENT` | CU-04 | No se pudo conectar con la cátedra al crear el hold |
+| `FAILED` | `HOLD_OUTCOME_UNKNOWN` | CU-04, CU-11 | No se sabe si el hold se creó (la cátedra no respondió, o el proceso quedó a medias); si se creó, vence solo |
+| `FAILED` | `CATEDRA_ACCESS_DENIED`, `CATEDRA_INVALID_RESPONSE` | CU-04 | Problema de configuración propio, o la cátedra respondió fuera de contrato |
+| `FAILED` | un `code` de la cátedra (`SLOT_ALREADY_HELD`, `SLOT_ALREADY_RESERVED`, `INVALID_SLOT`, `PROFESSIONAL_DISABLED`, `PROFESSIONAL_NOT_FOUND`, `HOLD_NOT_FOUND`...) | CU-04, CU-11 | La cátedra rechazó el hold o el confirm |
+| `EXPIRED` | `HOLD_EXPIRED` | CU-04, CU-11 | El hold venció antes de confirmarlo |
+| `EXPIRED`, `INVALID` | el `reason` del evento (`AppointmentProcessExpired`, `AppointmentProcessInvalid`), o `UNSPECIFIED` si no vino | CU-07 | Lo cerró la cátedra |
+| `EXPIRED` | `NOT_FOUND_AFTER_EXPIRY` | CU-11 | Pasó `expiresAt` + 1 minuto y la cátedra no tiene la reserva |
+| `EXPIRED` | `FAILED_IN_CATEDRA` | CU-11 | Pasó `expiresAt` + 1 minuto y la cátedra la tiene `FAILED` (venció sin teléfono) |
+| `EXPIRED` | `PHONE_PENDING_TIMEOUT` | CU-11 | Pasó `expiresAt` + 10 minutos y la cátedra la sigue teniendo esperando el teléfono |
 
 **No se exponen** `holdId`, `reservationProcessId` ni `reservationId` de la cátedra, los `eventId`, el
 teléfono ni los nombres del paciente: la app no los necesita para ninguna operación.
