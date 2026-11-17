@@ -40,4 +40,13 @@ class ReservationProcessMapperTest {
 
         assertThat(fila.toString()).doesNotContain("Juan", "Perez", "5492615551234").contains("PHONE_SUBMITTED");
     }
+
+    @Test
+    void elToStringDeLaEntidadNoTieneElMotivoDeCancelacion() {
+        // Lo escribe el usuario (CU-10): va a la cátedra y a su respuesta, nunca al log.
+        ReservationProcessEntity fila = mapper.toEntity(ReservationProcessMatrix.procesoEn(ReservationProcessStatus.CANCELLED, 7));
+
+        assertThat(fila.getCancellationReason()).isEqualTo(ReservationProcessMatrix.CANCELACION.reason());
+        assertThat(fila.toString()).doesNotContain(ReservationProcessMatrix.CANCELACION.reason()).contains("CANCELLED");
+    }
 }

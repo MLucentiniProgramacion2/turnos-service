@@ -43,6 +43,8 @@ public final class ReservationErrorResponses {
     public static final String RESERVATION_PROCESS_CLOSED = "RESERVATION_PROCESS_CLOSED";
     public static final String INVALID_PHONE_NUMBER = "INVALID_PHONE_NUMBER";
     public static final String PHONE_SUBMISSION_UNCONFIRMED = "PHONE_SUBMISSION_UNCONFIRMED";
+    public static final String RESERVATION_NOT_CANCELLABLE = "RESERVATION_NOT_CANCELLABLE";
+    public static final String CANCELLATION_OUTCOME_UNKNOWN = "CANCELLATION_OUTCOME_UNKNOWN";
 
     private static final String CODE = "code";
 
@@ -191,6 +193,30 @@ public final class ReservationErrorResponses {
             HttpStatus.SERVICE_UNAVAILABLE,
             PHONE_SUBMISSION_UNCONFIRMED,
             "No se pudo confirmar el envío del teléfono. Podés volver a enviarlo"
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // CU-10
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /**
+     * {@code 409}: solo se cancela una reserva confirmada (4b), o la cátedra dice que no se puede cancelar (6a). Lleva el
+     * {@code status} <strong>local</strong>: en 6a es {@code CONFIRMED} aunque la cátedra no la tenga así, y la discrepancia
+     * la corrige CU-09 o CU-11.
+     */
+    public static ErrorResponseException reservationNotCancellable(ReservationProcessStatus status) {
+        ErrorResponseException response = problem(HttpStatus.CONFLICT, RESERVATION_NOT_CANCELLABLE, "Solo se pueden cancelar reservas confirmadas");
+        response.getBody().setProperty("status", status.name());
+        return response;
+    }
+
+    /** {@code 503}: la cátedra no respondió después de recibir el pedido (5a). Puede haberse cancelado. */
+    public static ErrorResponseException cancellationOutcomeUnknown() {
+        return problem(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            CANCELLATION_OUTCOME_UNKNOWN,
+            "No se pudo confirmar la cancelación. Puede que se haya cancelado: revisá Mis reservas o volvé a intentarlo"
         );
     }
 

@@ -44,10 +44,15 @@ final class ReservationProcesses {
 
     /** Un proceso del usuario {@code userId}, profesional 202, martes 15/12/2026 a esa hora, en ese estado. */
     static ReservationProcess in(ReservationProcessStatus status, long userId, LocalTime startTime, int n) {
+        return in(status, userId, LocalDate.parse("2026-12-15"), startTime, n);
+    }
+
+    /** Como el anterior, en otra fecha. */
+    static ReservationProcess in(ReservationProcessStatus status, long userId, LocalDate date, LocalTime startTime, int n) {
         ReservationProcess process = ReservationProcess.start(
             id(n),
             new ProcessOwner(userId, "login-" + userId),
-            new AppointmentSlot(202, LocalDate.parse("2026-12-15"), startTime, startTime.plusMinutes(30)),
+            new AppointmentSlot(202, date, startTime, startTime.plusMinutes(30)),
             new ProfessionalSnapshot("Ana", "Gomez", "Clínica", 30),
             new PatientName("Ana", "Pérez"),
             ANTES.minusSeconds(60)

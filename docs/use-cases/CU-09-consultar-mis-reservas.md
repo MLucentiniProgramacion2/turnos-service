@@ -48,8 +48,10 @@ resolver (DPT-04).
 - **2a. Sin token, token inválido o vencido:** `401`.
 - **3a. El usuario no tiene procesos (o ninguno cumple el filtro):** lista vacía, sin llamar a la
   cátedra.
-- **4a. Ningún proceso de la página tiene `reservationProcessId`** (por ejemplo, todos quedaron en
-  `FAILED` al crear el hold): no se llama a la cátedra.
+- **4a. Ningún proceso de la página puede cambiar por lo que informe la cátedra:** no tiene
+  `reservationProcessId` (por ejemplo, todos quedaron en `FAILED` al crear el hold) o está en un estado
+  final, que nunca cambia (DPT-05). No se llama a la cátedra. (Ampliado en el #14: antes solo contaba la
+  falta de `reservationProcessId`; preguntar por un final no aporta nada.)
 - **4b. La cátedra no responde, responde 5xx o falla cualquier página:** **sin reintentos**,
   porque el usuario está esperando. Se responde `200` con los datos locales y una marca de "no
   actualizado". La consulta depende de datos propios, así que sigue funcionando (enunciado §8,
@@ -63,6 +65,33 @@ resolver (DPT-04).
 - **6b. La transición choca con otro cambio concurrente** (un evento Kafka o CU-11 moviendo el
   mismo proceso): el bloqueo optimista hace que gane uno solo. El estado se vuelve a leer y se
   responde con el actual (DPT-09).
+
+## Notas de implementación (issue #14)
+
+Contrato REST en [`api-rest.md`](../api-rest.md#cu-09-mis-reservas).
+
+- **Qué se cruza:** los procesos de la página con `reservationProcessId` que no están en un estado final.
+  El rango de la consulta (`from`, `to`) es el de sus fechas de turno. Una reserva de la cátedra cuyo
+  `externalPatientId` no es el del dueño no se cruza (WARN): no debería pasar, porque se filtra por él.
+- **La convergencia es una función del dominio** (`ReservationConvergence`) que decide solo por el estado de
+  la cátedra (`CONFIRMED` → `confirmed`, `CANCELLED` → `cancelledByReconciliation`, el resto nada); lo que
+  depende del estado local lo resuelve la máquina de estados. La reusa CU-11.
+- **Un intermedio que la cátedra informa `CANCELLED` guarda también la confirmación** (`reservationId` y
+  `confirmedAt`): en la cátedra solo se cancela lo confirmado. Si el proceso ya tenía una (por
+  `AppointmentConfirmed`), no se pisa. Se degrada como en CU-07: `confirmedAt` o `cancelledAt` ausentes → el
+  reloj; un motivo de más de 500 caracteres → se recorta; un `CONFIRMED` sin `reservationId` positivo no se
+  aplica.
+- **Todas las páginas de la cátedra**, sin seguir el `Link` (URL absolutas a un host que no elegimos), hasta
+  `X-Total-Count` (la cátedra recorta `size` a 2000 sin avisar). Páginas de 200, hasta 5, plazo total de 10 s
+  sin empezar una página que no pueda terminar a tiempo. Un total que cambia entre páginas es 4b. Un ítem
+  con `status` desconocido se conserva sin efecto; uno sin `reservationProcessId` o con fecha u hora
+  ilegibles se ignora con WARN.
+- **La página y el total salen de la misma foto** (`REPEATABLE_READ`, solo lectura).
+- **El filtro por estado se aplica antes de converger** y se responde el estado actual.
+- **6b:** el guardado pasa por `ReservationProcessUpdater` (releer, aplicar, guardar, hasta 3 intentos). Si
+  se agotan, ese proceso se muestra con el estado leído y la marca queda en "no actualizado".
+- **Log:** INFO por cada convergencia aplicada; WARN si la cátedra no responde; ERROR si es un problema
+  nuestro (credencial, pedido rechazado, respuesta fuera de contrato). Nada por consulta.
 
 ## Postcondiciones
 

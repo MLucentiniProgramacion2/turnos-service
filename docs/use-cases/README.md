@@ -30,7 +30,7 @@ las decisiones del servicio de catálogo (`DP-xx`), que acá se citan como "DP-x
 | Usuario final (app KMP) | Principal | CU-01, CU-02, CU-03, CU-04, CU-06, CU-08, CU-09, CU-10 |
 | Administrador (`ROLE_ADMIN`) | Principal | CU-12 |
 | Kafka de la cátedra (topic de acciones `alumnos.turnos.acciones.{groupId}`) | Principal (disparador) | CU-05, CU-07 |
-| Arranque del servicio | Principal (disparador temporal) | CU-11 |
+| Arranque del servicio | Principal (disparador temporal) | CU-11 (es la primera ejecución de la tarea periódica, con demora inicial 0) |
 | Temporizador (cada 60 s, configurable) | Principal (disparador temporal) | CU-11 |
 | Servicio de catálogo (agenda vigente, CU-07 del catálogo) | Secundario | CU-03, CU-04 |
 | API REST de la cátedra | Secundario | CU-03, CU-04, CU-09, CU-10, CU-11 |
@@ -196,16 +196,14 @@ stateDiagram-v2
 | DPT-23 | "Mis reservas": procesos locales más el estado de la cátedra (todas las páginas), sin reintentos; si la cátedra falla, datos locales marcados como "no actualizado". CU-12 solo local. | CU-09, CU-10, CU-12 |
 | DPT-24 | CU-11 solo toma `CREATING_HOLD` y `HOLD_CREATED` con más de 1 min sin cambios (configurable). | CU-11 |
 
-## Decisiones todavía pendientes que afectan a estos casos
+## Dónde se resolvió cada decisión que estuvo pendiente
 
-- Contrato REST de turnos para KMP (DPT-18): resuelto en [`docs/api-rest.md`](../api-rest.md), que
-  se completa con cada caso de uso implementado (CU-03, CU-04 y CU-06 en el issue #12; CU-08 a CU-12
-  después).
-- Contrato concreto con el catálogo para su CU-07: resuelto en el issue #35 del catálogo
-  (`docs/use-cases/CU-07-consultar-agenda-vigente.md` y su ADR 0007).
-- Motor de base y herramienta de migraciones: resuelto en el
-  [ADR 0001 (PostgreSQL)](../adr/0001-postgresql.md) y el
-  [ADR 0002 (Liquibase)](../adr/0002-liquibase.md). El índice único parcial de DPT-17 es uno de
-  los motivos de PostgreSQL.
-- Clave de firma del JWT compartida con el catálogo y obtención del `id` del usuario a partir del
-  JWT (DPT-21): resuelto en el [ADR 0003 (emisión del JWT y usuarios)](../adr/0003-emision-jwt-y-usuarios.md).
+Ninguna decisión de estos casos queda pendiente. Las que lo estuvieron se resolvieron en:
+
+- el contrato REST con la app (DPT-18): [`docs/api-rest.md`](../api-rest.md), completo para CU-03 a CU-12;
+- el contrato con el catálogo para su CU-07: issue #35 del catálogo y su ADR 0007, resumido en los contratos
+  entre servicios del repo DOCUMENTACION;
+- el motor de base y las migraciones: [ADR 0001](../adr/0001-postgresql.md) y [ADR 0002](../adr/0002-liquibase.md);
+- la clave de firma del JWT y el `id` del usuario en el token (DPT-21): [ADR 0003](../adr/0003-emision-jwt-y-usuarios.md).
+
+Cómo se combinan los casos para la idempotencia y la recuperación: [`docs/reservas.md`](../reservas.md).

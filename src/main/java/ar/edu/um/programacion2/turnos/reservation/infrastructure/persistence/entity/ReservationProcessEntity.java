@@ -128,6 +128,8 @@ public class ReservationProcessEntity {
     @Column(name = "confirmed_at")
     private Instant confirmedAt;
 
+    /** Lo escribe el usuario (CU-10): fuera del {@code toString()}, como el teléfono y los nombres. */
+    @ToString.Exclude
     @Column(name = "cancellation_reason", length = 500)
     private String cancellationReason;
 

@@ -57,6 +57,21 @@ Postman o la app.
 - **DPT-21 (dueño):** el filtro por usuario y el dueño mostrado se basan en el `id` interno; el
   login se muestra como dato descriptivo.
 
+## Notas de implementación (issue #14)
+
+Contrato REST en [`api-rest.md`](../api-rest.md#cu-12-consulta-administrativa-solo-role_admin).
+
+- **Autorización:** la regla de `/api/admin/**` (`ROLE_ADMIN` y no `ROLE_SERVICE`). Sin un `@PreAuthorize`
+  además: con dos capas, ningún test detectaría que se aflojó una (medido con una mutación).
+- **DTO propio** (`AdminReservationProcessResponse`): el dueño (`userId` y el login al iniciar), el turno, el
+  profesional, el estado, `createdAt`, `statusChangedAt`, `expiresAt` y los identificadores de la integración
+  (`holdId`, `reservationProcessId`, `reservationId`, `requestEventId`, `lastSubmittedEventId`). **Sin el
+  teléfono, sin los nombres del paciente y sin el texto del motivo de cancelación** (solo si hubo uno): no hacen
+  falta para diagnosticar (enunciado §9).
+- **Orden:** `statusChangedAt` descendente e `id`: lo último que se movió primero.
+- **Sin índice nuevo:** sin filtro de usuario es un recorrido de la tabla, medido en 2 ms con 10 000 procesos;
+  con filtro de usuario usa `idx_reservation_process_user`.
+
 ## Notas
 
 - Nunca se exponen el JWT técnico de la cátedra ni otros secretos de la integración.

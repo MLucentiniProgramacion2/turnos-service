@@ -4,9 +4,14 @@
 
 Servicio de **turnos y reservas** del proyecto integrador 2026 (Programación II). Es el dueño de
 los usuarios finales: registra, autentica y **emite el JWT** que la app KMP usa con este servicio y
-con el de catálogo (ver [ADR 0003](docs/adr/0003-emision-jwt-y-usuarios.md)). Además va a
-construir la disponibilidad y gestionar el proceso de reserva contra la API y el Kafka de la
-cátedra.
+con el de catálogo (ver [ADR 0003](docs/adr/0003-emision-jwt-y-usuarios.md)). Además construye la
+disponibilidad (con la agenda vigente que pide al servicio de catálogo y las ocupaciones de la cátedra),
+gestiona el proceso de reserva contra la API y el Kafka de la cátedra, deja a cada usuario consultar y
+cancelar solo sus reservas, y reconcilia los procesos que quedaron pendientes.
+
+- Estados, idempotencia y recuperación: [`docs/reservas.md`](docs/reservas.md).
+- Tablas y propiedad de los datos: [`docs/modelo-de-datos.md`](docs/modelo-de-datos.md).
+- Contrato REST con la app: [`docs/api-rest.md`](docs/api-rest.md).
 
 La base (usuarios, seguridad, JWT, configuración y Liquibase) se generó con JHipster 9.4 como
 monolito sin cliente web. Las funcionalidades de negocio se escriben a mano con arquitectura
@@ -53,6 +58,7 @@ Opcionales, con su valor por defecto:
 | `SERVICE_TOKEN_LIFETIME` | `5m` | Vida del token de servicio hacia el catálogo, de `30s` a `5m`; con más, la aplicación no arranca ([ADR 0005](docs/adr/0005-token-de-servicio.md)) |
 | `RESERVATION_TIME_ZONE` | `America/Argentina/Mendoza` | Zona horaria de atención: "hoy" y "ahora" para ofrecer y reservar turnos (DPT-10). Una zona que no existe impide arrancar |
 | `RESERVATION_BOOKING_HORIZON_DAYS` | `60` | Hasta cuántos días adelante se ofrecen turnos, de 1 a 365 |
+| `RESERVATION_RECONCILIATION_INTERVAL` | `60s` | Cada cuánto corre la reconciliación de procesos pendientes (CU-11), desde que termina la anterior; la primera corre al arrancar. De `10s` a `10m` |
 
 ## Uso
 
@@ -86,6 +92,12 @@ de error, está en [`docs/api-rest.md`](docs/api-rest.md).
 | `GET /api/professionals/{id}/availability?from=&to=` | CU-03 | turnos libres por día (hasta 7 días, hasta hoy + 60) |
 | `POST /api/reservation-processes` | CU-04 | `202` con el proceso; `200` si el mismo turno ya estaba en curso |
 | `POST /api/reservation-processes/{id}/phone` | CU-06 | `202` con el proceso en `PHONE_SUBMITTED` |
+| `GET /api/reservation-processes/{id}` | CU-08 | `200` con el proceso propio (la app lo consulta cada 2 s) |
+| `GET /api/reservation-processes?status=&page=&size=` | CU-09 | `200` con una página de procesos propios, convergidos con la cátedra, y `catedraUpToDate` |
+| `POST /api/reservation-processes/{id}/cancel` | CU-10 | `200` con el proceso en `CANCELLED` (idempotente) |
+| `GET /api/admin/reservation-processes` y `.../{id}` | CU-12 | solo `ROLE_ADMIN`: los procesos de todos, de solo lectura |
+
+La reconciliación (CU-11) no tiene endpoint: corre al arrancar y cada 60 s.
 
 El pedido de teléfono (CU-05) y el resultado (CU-07) llegan por Kafka: no tienen endpoint. Para no
 dejar el token en el historial de la terminal, se guarda en una variable sin mostrarlo:
@@ -101,10 +113,20 @@ curl -s "http://localhost:8080/api/professionals/202/availability?from=2026-12-1
 
 ### Un usuario trabado en una reserva en curso
 
-Mientras no exista la reconciliación (CU-11, otro issue), un proceso que quedó en un estado intermedio
-(por ejemplo, `HOLD_CREATED` porque el confirm no respondió, o porque se perdió un evento) impide al
-usuario iniciar otra reserva (índice único parcial, DPT-17). Se destraba a mano, pasándolo a `FAILED`
-**después de comprobar en la cátedra** (`GET /api/appointments`) que ese proceso no quedó confirmado:
+Un proceso en un estado intermedio impide iniciar otra reserva (índice único parcial, DPT-17). La
+**reconciliación** (CU-11, al arrancar y cada 60 s) los cierra solos, preguntándole a la cátedra con los IDs
+guardados:
+
+| Caso | Se destraba solo |
+| --- | --- |
+| `CREATING_HOLD` que quedó a medias (por ejemplo, el hold se creó y no se pudo guardar) | Pasa a `FAILED` con más de 1 minuto sin cambios: entre 1 y 2 minutos |
+| `HOLD_CREATED` porque el confirm no respondió | Con más de 1 minuto: si la cátedra no lo tiene, se reintenta el confirm; si lo tiene, converge. Entre 1 y 2 minutos |
+| Se perdió un evento (esperando el pedido de teléfono o el resultado) | Pasado `expiresAt` + 1 minuto, según lo que informe la cátedra (`CONFIRMED`, `CANCELLED` o `EXPIRED`): entre 11 y 12 minutos después del hold |
+| La cátedra sigue en `PHONE_PENDING` | Se espera hasta `expiresAt` + 10 minutos; después pasa a `EXPIRED` con una advertencia |
+
+Si la cátedra no responde, el proceso queda como está y lo toma la ejecución siguiente. Como **último
+recurso** (por ejemplo, con la cátedra caída por mucho tiempo), se puede pasar a `FAILED` a mano, **después
+de comprobar en la cátedra** (`GET /api/appointments`) que ese proceso no quedó confirmado:
 
 ```bash
 docker exec -it turnos-db psql -U turnos_app -d turnos -c \
@@ -134,24 +156,15 @@ con una contraseña aleatoria y **no puede iniciar sesión**. El alta normal es 
 
 ## Modelo de datos
 
-Además de las tablas de JHipster (`jhi_user`, `jhi_authority`, `jhi_user_authority`), las de la
-feature `reservation`, con changelogs propios en `config/liquibase/changelog/reservation/`:
+Además de las tablas de JHipster (`jhi_user`, `jhi_authority`, `jhi_user_authority`), las de la feature
+`reservation`, con changelogs propios en `config/liquibase/changelog/reservation/`: `reservation_process` (un
+proceso de reserva por fila, del hold a su estado final, con el dueño en `user_id` y un índice único parcial
+que deja una sola reserva en curso por usuario) y `processed_event` (los `eventId` de Kafka ya procesados).
+Cada columna, las restricciones, qué datos son de turnos, del catálogo y de la cátedra, y cómo se protegen los
+datos personales: [`docs/modelo-de-datos.md`](docs/modelo-de-datos.md).
 
-- **`reservation_process`**: un proceso de reserva por fila, desde que se pide el hold hasta su
-  estado final.
-  - `id` es un UUID, que es lo que ve la app.
-  - El dueño es `user_id` (FK a `jhi_user`, DPT-21); `user_login` es solo para mostrar.
-  - Guarda el turno, los datos históricos del profesional (DPT-12), el paciente y los IDs y datos
-    de la cátedra.
-  - `version` es para el bloqueo optimista (DPT-09).
-  - **Índice único parcial** `uq_reservation_process_one_intermediate_per_user`: un solo proceso
-    intermedio por usuario (DPT-17).
-- **`processed_event`**: los `eventId` de los eventos de Kafka ya procesados, como clave primaria
-  (DPT-15). Se escriben con `insert ... on conflict do nothing`, en la misma transacción que el cambio
-  de estado ([ADR 0006](docs/adr/0006-kafka-en-turnos.md)).
-
-Turnos **no guarda el catálogo**: la agenda se pide al servicio de catálogo en cada consulta (CU-03) y
-en cada reserva (CU-04). Del profesional solo quedan los datos históricos del proceso, para mostrar.
+Turnos **no guarda el catálogo**: la agenda se pide al servicio de catálogo en cada consulta (CU-03) y en cada
+reserva (CU-04). Del profesional solo quedan los datos históricos del proceso, para mostrar.
 
 Estados del proceso (DPT-05, diagrama en [`docs/use-cases/README.md`](docs/use-cases/README.md)):
 
@@ -159,6 +172,21 @@ Estados del proceso (DPT-05, diagrama en [`docs/use-cases/README.md`](docs/use-c
   `PHONE_SUBMITTED` y `PHONE_REJECTED`;
 - **estable:** `CONFIRMED`, que solo sale a `CANCELLED`;
 - **finales:** `CANCELLED`, `EXPIRED`, `INVALID` y `FAILED`.
+
+## Evidencias del enunciado (§11)
+
+Las que corresponden a turnos, con el test que la prueba y la comprobación manual contra la cátedra real
+(los logs están en la carpeta `evidencias` del proyecto, fuera de este repo):
+
+| Evidencia (§11) | Test automatizado | Comprobación manual |
+| --- | --- | --- |
+| Una reserva confirmada mediante el flujo REST y Kafka | `ReservationFlowsIT.unaReservaQueTerminaConfirmada`, `ReservationStage3FlowsIT.confirmadaConsultadaListadaYCanceladaConElEventoTardioSinEfecto` | `12-arranque-con-comprobacion.log`, `12-reserva.json`; `14-arranque-2.log` (la de A, cerrada por CU-11) |
+| Una reserva que expira sin completar la información solicitada | `ReservationFlowsIT.unaReservaQueVenceSinInformarElTelefono`, `ReservationStage3FlowsIT.unaReservaQueExpiraLaAppLaVeExpiradaYSePuedeVolverAReservar` y `unPedidoDeTelefonoQueNoLlegaNuncaTerminaExpiradoPorLaReconciliacion` | `12-reserva-que-vence.json`; `14-arranque-2.log` (la de B) |
+| Consulta y cancelación de una reserva propia, sin acceso cruzado entre usuarios comunes | `ReservationStage3FlowsIT.otroUsuarioNoVeNiCancelaElProcesoAunqueLaCatedraDevuelvaLaReserva`, `CancelReservationControllerIT`, `MyReservationsControllerIT`, `ReservationProcessStatusControllerIT` | `14-arranque-1.log` (CU-08, CU-09, `404` cruzados y la cancelación de la 5857) |
+| Procesamiento idempotente de un mensaje duplicado | `ReservationEventListenerIT`, `ReservationStage3FlowsIT.unAppointmentConfirmedDespuesDeExpiredNoLoReabreYUnDuplicadoNoRepiteEfectos` | `14-arranque-3.log` (los eventos tardíos contra la cátedra real); el duplicado no se puede forzar en la cátedra |
+| Separación efectiva de datos entre los dos servicios | `HexagonalArchitectureTest`; la base propia (`docker-compose.yml`) | [`docs/modelo-de-datos.md`](docs/modelo-de-datos.md#3-la-propiedad-qué-es-de-quién) |
+| Rechazo de accesos no autenticados o no autorizados | La matriz de autorización de cada `*ControllerIT` (sin token `401`, token de servicio `403`, usuario en `/api/admin/**` `403`), `ServiceTokenRejectionIT` | `10-token-servicio-en-turnos.log` |
+| Pruebas automatizadas de los comportamientos principales | `./mvnw clean verify` (sección siguiente) | — |
 
 ## Tests
 
@@ -187,6 +215,8 @@ tokens ni URLs.
 ```bash
 # Ocupaciones reales de la cátedra (un GET, sin efectos). Necesita ZeroTier.
 ./mvnw test -Dtest=CatedraOccupancyManualCheck -Dcatedra.manual=true -Dprofesional=202 -Ddesde=2026-12-14 -Dhasta=2026-12-18
+# Las reservas reales de un paciente (un GET, sin efectos), con páginas de 1 para recorrer la paginación de verdad.
+./mvnw test -Dtest=CatedraAppointmentsManualCheck -Dcatedra.manual=true -Dpaciente=user-1101 -Ddesde=2027-01-05 -Dhasta=2027-01-05 -Dsize=1
 # Tres rechazos de la cátedra real que no crean nada: PROFESSIONAL_NOT_FOUND, INVALID_SLOT y HOLD_NOT_FOUND.
 ./mvnw test -Dtest=CatedraHoldRejectionsManualCheck -Dcatedra.manual=true
 # La agenda de un profesional en el catálogo local, con un token de servicio firmado como lo firma turnos.
@@ -202,7 +232,7 @@ en cada push a `develop` (workflow [`ci.yml`](.github/workflows/ci.yml)). Si fal
 ## Notas
 
 - `src/main/docker/` es lo que genera JHipster y todavía no se usa: la única base del servicio es la
-  del `docker-compose.yml` de la raíz.
+  del `docker-compose.yml` de la raíz. Sumar la imagen del servicio al Compose es de la etapa 4.
 - La clave JWT de `src/main/docker/jhipster-control-center.yml` (y de `.yo-rc.json` y del perfil de
   test) es la **clave de test, pública a propósito**: no sirve para firmar ni validar tokens reales.
 - Decisiones de arquitectura en [`docs/adr/`](docs/adr) y casos de uso en

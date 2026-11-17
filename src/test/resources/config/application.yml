@@ -19,6 +19,8 @@ spring:
   # Replace by 'prod, faker' to add the faker context and have sample data loaded in production
   liquibase:
     contexts: test
+    # Igual que en el principal (que este archivo tapa): sin el pedido de analytics de Liquibase.
+    analytics-enabled: false
   jackson:
     datatype:
       datetime:
@@ -89,6 +91,12 @@ application:
     # Igual que en el application.yml principal, que este archivo tapa en los tests: Liquibase
     # termina antes de que Hibernate valide el esquema, sin depender del nombre del perfil.
     async-start: false
+
+reservation:
+  reconciliation:
+    # Apagada por lo mismo que el listener: cada contexto reconciliaría contra una cátedra que no existe y escribiría
+    # procesos. La prenden solo sus tests, o llaman al caso de uso directo.
+    enabled: false
 
 catedra:
   api:

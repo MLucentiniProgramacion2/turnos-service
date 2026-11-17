@@ -20,11 +20,20 @@ final class CatedraManualCheckSupport {
     private CatedraManualCheckSupport() {}
 
     static RestClient restClient() throws IOException {
+        return restClient(properties());
+    }
+
+    static RestClient restClient(CatedraApiProperties properties) {
+        return new CatedraClientConfiguration().catedraRestClient(properties);
+    }
+
+    /** La configuración real de la cátedra, con los valores por defecto para lo demás (timeouts, páginas). */
+    static CatedraApiProperties properties() throws IOException {
         Properties dotEnv = readDotEnv();
         CatedraApiProperties properties = new CatedraApiProperties();
         properties.setUrl(URI.create(required("CATEDRA_API_URL", dotEnv)));
         properties.setToken(required("CATEDRA_JWT", dotEnv));
-        return new CatedraClientConfiguration().catedraRestClient(properties);
+        return properties;
     }
 
     static Properties readDotEnv() throws IOException {

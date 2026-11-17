@@ -192,10 +192,12 @@ el estado actual.
   estado guardado (`HOLD_CREATED`). El confirm se aplicó, así que la cátedra va a pedir el teléfono y
   ese evento hace avanzar el proceso desde `HOLD_CREATED` (CU-05 3.3a).
 
-**Limitación hasta CU-11:** un proceso que queda en `HOLD_CREATED` (11a) o en `CREATING_HOLD` no lo
-cierra nadie mientras no exista la reconciliación, y el índice único parcial le impide al usuario
-iniciar otra reserva. Si el confirm no se aplicó, la cátedra tampoco publica ningún evento para ese
-proceso. Mientras tanto se destraba a mano en la base (ver la explicación del issue #12).
+**Lo que queda a medias lo cierra CU-11** (issue #14): un proceso en `HOLD_CREATED` (11a) o en
+`CREATING_HOLD` impide al usuario iniciar otra reserva (índice único parcial), y si el confirm no se
+aplicó la cátedra no publica ningún evento para ese proceso. La reconciliación lo toma con más de 1 minuto
+sin cambios: `CREATING_HOLD` pasa a `FAILED`; `HOLD_CREATED` se reconcilia con la lista de la cátedra y, si
+no tiene el confirm y no venció, se reintenta. Se destraba solo en 1 o 2 minutos (README, "Un usuario
+trabado").
 
 ## Postcondiciones
 

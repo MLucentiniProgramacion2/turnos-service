@@ -1,10 +1,15 @@
 package ar.edu.um.programacion2.turnos.reservation.domain.ports.out;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcess;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.PageQuery;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessStatus;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ResultPage;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Los procesos de reserva guardados. Las operaciones son las que piden los casos de uso (CU-04 en adelante), no un CRUD.
@@ -47,4 +52,30 @@ public interface ReservationProcessRepository {
 
     /** El proceso con ese identificador <strong>si es de ese usuario</strong>. */
     Optional<ReservationProcess> findByIdAndOwner(ReservationProcessId id, long userId);
+
+    /**
+     * Una página de los procesos del usuario (CU-09), en orden total: fecha del turno descendente, hora descendente e
+     * {@code id} para desempatar (como la cátedra, §11). El total cuenta todos los que cumplen el filtro.
+     *
+     * @param statuses los estados pedidos; vacío es "todos"
+     */
+    ResultPage<ReservationProcess> findPageByOwner(long userId, Set<ReservationProcessStatus> statuses, PageQuery page);
+
+    /**
+     * Todos los procesos intermedios (CU-11), del cambio de estado más viejo al más nuevo: si la ejecución se corta por el
+     * tope o el plazo, los que quedan son los más recientes. Hay a lo sumo uno por usuario (DPT-17).
+     */
+    List<ReservationProcess> findIntermediates();
+
+    /**
+     * Una página de los procesos de todos los usuarios, o de uno (CU-12), del último cambio de estado más nuevo al más viejo
+     * y el {@code id} para desempatar: para diagnosticar, lo último que se movió primero.
+     *
+     * @param userId el dueño, o {@code null} para todos
+     * @param statuses los estados pedidos; vacío es "todos"
+     */
+    ResultPage<ReservationProcess> findPage(Long userId, Set<ReservationProcessStatus> statuses, PageQuery page);
+
+    /** El proceso con ese identificador, <strong>de cualquier dueño</strong>: solo para CU-12, que es de administrador. */
+    Optional<ReservationProcess> findById(ReservationProcessId id);
 }

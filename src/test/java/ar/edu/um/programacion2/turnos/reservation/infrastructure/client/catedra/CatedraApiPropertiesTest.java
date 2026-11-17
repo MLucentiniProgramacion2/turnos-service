@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.web.client.RestClient;
 
@@ -35,7 +37,7 @@ class CatedraApiPropertiesTest {
     @Test
     void tomaLosTimeoutsConfigurados() {
         runner
-            .withPropertyValues(URL, TOKEN, "catedra.api.connect-timeout=1s", "catedra.api.read-timeout=1m")
+            .withPropertyValues(URL, TOKEN, "catedra.api.connect-timeout=1s", "catedra.api.read-timeout=1m", "catedra.api.list-deadline=2m")
             .run(context -> {
                 CatedraApiProperties properties = context.getBean(CatedraApiProperties.class);
                 assertThat(properties.getConnectTimeout()).isEqualTo(Duration.ofSeconds(1));
@@ -89,6 +91,34 @@ class CatedraApiPropertiesTest {
         properties.setToken("token-de-prueba-1a2b3c");
 
         assertThat(properties.toString()).doesNotContain("token-de-prueba-1a2b3c").contains("[oculto]").contains("catedra.test");
+    }
+
+    @Test
+    void elListadoTienePaginasDe200HastaCincoYUnPlazoDe10Segundos() {
+        runner
+            .withPropertyValues(URL, TOKEN)
+            .run(context -> {
+                CatedraApiProperties properties = context.getBean(CatedraApiProperties.class);
+                assertThat(properties.getListPageSize()).isEqualTo(200);
+                assertThat(properties.getListMaxPages()).isEqualTo(5);
+                assertThat(properties.getListDeadline()).isEqualTo(Duration.ofSeconds(10));
+                assertThat(properties.requestWorstCase()).isEqualTo(Duration.ofSeconds(7));
+            });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "catedra.api.list-page-size=0", "catedra.api.list-page-size=2001", "catedra.api.list-max-pages=0" })
+    void unTamanoDePaginaQueLaCatedraRecortariaOUnTopeEnCeroNoArrancan(String propiedad) {
+        // Con más de 2000, la cátedra recorta sin avisar (medido el 16/11).
+        runner.withPropertyValues(URL, TOKEN, propiedad).run(context -> assertFailsOn(context.getStartupFailure(), "list"));
+    }
+
+    @Test
+    void unPlazoDeListadoMenorQueUnPedidoNoArranca() {
+        // 2 s + 5 s = 7 s: la primera página siempre se pide, así que con 6 s el plazo no sería un techo.
+        runner
+            .withPropertyValues(URL, TOKEN, "catedra.api.list-deadline=6s")
+            .run(context -> assertFailsOn(context.getStartupFailure(), "list-deadline"));
     }
 
     private static void assertFailsOn(Throwable failure, String field) {

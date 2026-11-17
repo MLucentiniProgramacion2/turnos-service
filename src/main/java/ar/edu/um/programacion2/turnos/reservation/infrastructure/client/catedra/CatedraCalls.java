@@ -13,6 +13,7 @@ import java.net.http.HttpConnectTimeoutException;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -49,8 +50,16 @@ final class CatedraCalls {
      * @param withEffects si la operación cambia algo en la cátedra (decide entre "no disponible" y "resultado desconocido")
      */
     static byte[] call(RestClient.RequestHeadersSpec<?> request, String operation, boolean withEffects, int expectedStatus) {
+        return callForResponse(request, operation, withEffects, expectedStatus).body();
+    }
+
+    /** El cuerpo y las cabeceras de una respuesta exitosa (el listado necesita {@code X-Total-Count}, contrato §11). */
+    record Response(byte[] body, HttpHeaders headers) {}
+
+    /** Como {@link #call}, pero también devuelve las cabeceras. La clasificación de la falla es la misma. */
+    static Response callForResponse(RestClient.RequestHeadersSpec<?> request, String operation, boolean withEffects, int expectedStatus) {
         try {
-            return request.exchange((req, response) -> readBody(response, operation, withEffects, expectedStatus));
+            return request.exchange((req, response) -> readResponse(response, operation, withEffects, expectedStatus));
         } catch (ResourceAccessException e) {
             // La causa directa es la IOException del cliente del JDK. Solo su tipo va al log: el mensaje de
             // ResourceAccessException lleva la URL.
@@ -69,11 +78,11 @@ final class CatedraCalls {
         }
     }
 
-    private static byte[] readBody(ClientHttpResponse response, String operation, boolean withEffects, int expectedStatus)
+    private static Response readResponse(ClientHttpResponse response, String operation, boolean withEffects, int expectedStatus)
         throws IOException {
         int status = response.getStatusCode().value();
         if (status == expectedStatus) {
-            return response.getBody().readAllBytes();
+            return new Response(response.getBody().readAllBytes(), HttpHeaders.readOnlyHttpHeaders(response.getHeaders()));
         }
         String code = errorCode(response);
         String description = "La cátedra respondió " + status + " " + describe(code) + " " + operation;

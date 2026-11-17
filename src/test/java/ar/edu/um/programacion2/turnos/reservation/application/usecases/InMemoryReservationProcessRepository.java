@@ -1,8 +1,10 @@
 package ar.edu.um.programacion2.turnos.reservation.application.usecases;
 
+import ar.edu.um.programacion2.turnos.reservation.domain.model.PageQuery;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcess;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessStatus;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ResultPage;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.IntermediateProcessConflictException;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.ReservationProcessRepository;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.persistence.entity.ReservationProcessEntity;
@@ -17,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.springframework.dao.OptimisticLockingFailureException;
 
@@ -113,6 +116,57 @@ class InMemoryReservationProcessRepository implements ReservationProcessReposito
     public Optional<ReservationProcess> findByIdAndOwner(ReservationProcessId id, long userId) {
         transactions.requireActive();
         return Optional.ofNullable(rows.get(id)).filter(row -> row.getOwner().userId() == userId).map(this::copy);
+    }
+
+    @Override
+    public ResultPage<ReservationProcess> findPageByOwner(long userId, Set<ReservationProcessStatus> statuses, PageQuery page) {
+        transactions.requireActive();
+        List<ReservationProcess> all = rows
+            .values()
+            .stream()
+            .filter(row -> row.getOwner().userId() == userId)
+            .filter(row -> statuses.isEmpty() || statuses.contains(row.getStatus()))
+            .sorted(
+                Comparator.comparing((ReservationProcess row) -> row.getSlot().date())
+                    .thenComparing(row -> row.getSlot().startTime())
+                    .reversed()
+                    .thenComparing(row -> row.getId().value())
+            )
+            .toList();
+        List<ReservationProcess> items = all.stream().skip((long) page.number() * page.size()).limit(page.size()).map(this::copy).toList();
+        return new ResultPage<>(items, page.number(), page.size(), all.size());
+    }
+
+    @Override
+    public ResultPage<ReservationProcess> findPage(Long userId, Set<ReservationProcessStatus> statuses, PageQuery page) {
+        transactions.requireActive();
+        List<ReservationProcess> all = rows
+            .values()
+            .stream()
+            .filter(row -> userId == null || row.getOwner().userId() == userId)
+            .filter(row -> statuses.isEmpty() || statuses.contains(row.getStatus()))
+            .sorted(Comparator.comparing(ReservationProcess::getStatusChangedAt).reversed().thenComparing(row -> row.getId().value()))
+            .toList();
+        List<ReservationProcess> items = all.stream().skip((long) page.number() * page.size()).limit(page.size()).map(this::copy).toList();
+        return new ResultPage<>(items, page.number(), page.size(), all.size());
+    }
+
+    @Override
+    public Optional<ReservationProcess> findById(ReservationProcessId id) {
+        transactions.requireActive();
+        return Optional.ofNullable(rows.get(id)).map(this::copy);
+    }
+
+    @Override
+    public List<ReservationProcess> findIntermediates() {
+        transactions.requireActive();
+        return rows
+            .values()
+            .stream()
+            .filter(row -> row.getStatus().isIntermediate())
+            .sorted(Comparator.comparing(ReservationProcess::getStatusChangedAt).thenComparing(row -> row.getId().value()))
+            .map(this::copy)
+            .toList();
     }
 
     // ---------------------------------------------------------------------------------------------------------------

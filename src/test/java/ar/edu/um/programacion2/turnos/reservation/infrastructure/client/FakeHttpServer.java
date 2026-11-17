@@ -96,9 +96,28 @@ public final class FakeHttpServer implements AutoCloseable {
         behavior = exchange -> send(exchange, status, contentType, body, headers);
     }
 
+    /** Una respuesta armada a partir del pedido. */
+    public record Reply(int status, String body, Map<String, String> headers) {}
+
+    /**
+     * Cada pedido recibe la respuesta que arma la función a partir de su query (por ejemplo, una página distinta según
+     * {@code page}). La función corre en el hilo del servidor.
+     */
+    public void respondByQuery(java.util.function.Function<String, Reply> replies) {
+        behavior = exchange -> {
+            Reply reply = replies.apply(exchange.getRequestURI().getRawQuery());
+            send(exchange, reply.status(), "application/json", reply.body(), reply.headers());
+        };
+    }
+
     /** Los pedidos cuya ruta termina así reciben esta respuesta, en vez de la general. */
     public void routeJson(String pathSuffix, int status, String body) {
         routes.put(pathSuffix, exchange -> send(exchange, status, "application/json", body, Map.of()));
+    }
+
+    /** Como {@link #routeJson}, con cabeceras (por ejemplo {@code X-Total-Count}). */
+    public void route(String pathSuffix, int status, String body, Map<String, String> headers) {
+        routes.put(pathSuffix, exchange -> send(exchange, status, "application/json", body, headers));
     }
 
     public void routeProblem(String pathSuffix, int status, String code) {

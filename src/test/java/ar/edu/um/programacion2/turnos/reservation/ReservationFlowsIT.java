@@ -48,6 +48,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -286,9 +287,93 @@ class ReservationFlowsIT {
         assertThat(columna(id, "last_submitted_event_id")).isEqualTo("enviado-por-cu06");
     }
 
+    /**
+     * CU-10 contra CU-07, orden A: {@code AppointmentCancelled} se procesa <strong>mientras la cátedra responde la
+     * cancelación</strong> (lo publica la propia cátedra al cancelar). CU-10 relee, el modelo da FINAL_STATE y responde 200
+     * con el estado actual (7a): queda la cancelación del evento.
+     */
+    @Test
+    void cu10Contra07_elEventoSeProcesaMientrasLaCatedraRespondeLaCancelacion() throws Exception {
+        String id = confirmada();
+        CATEDRA.routeJson("/cancel", 200, cancelacionDeLaCatedra());
+        CATEDRA.beforeResponding("/cancel", () -> publicarAccion(cancelado(eventoNuevo())));
+
+        cancelar(id, "{\"reason\":\"Me surgió un viaje\"}")
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("CANCELLED"))
+            .andExpect(jsonPath("$.cancellation.reason").value("Cancelado en la catedra"));
+
+        assertThat(columna(id, "status || '|' || cancellation_reason")).isEqualTo("CANCELLED|Cancelado en la catedra");
+    }
+
+    /**
+     * CU-10 contra CU-07, orden B: el evento se confirma <strong>entre la relectura y el guardado de CU-10</strong> (por otra
+     * conexión, como lo haría el listener). CU-10 pierde por {@code @Version}, relee, el modelo da FINAL_STATE y responde
+     * 200. El evento real llega después y queda sin efecto.
+     */
+    @Test
+    void cu10Contra07_elEventoGuardaEntreLaRelecturaYElGuardadoDeCu10() throws Exception {
+        String id = confirmada();
+        CATEDRA.routeJson("/cancel", 200, cancelacionDeLaCatedra());
+        boolean[] yaChoco = { false };
+        doAnswer(invocacion -> {
+            if (!yaChoco[0] && !Thread.currentThread().getName().contains("ntainer")) {
+                yaChoco[0] = true;
+                ejecutarEnOtraConexion(
+                    "update reservation_process set status = 'CANCELLED', cancellation_reason = 'Cancelado en la catedra'," +
+                    " cancelled_at = '2026-12-14 12:50:00', version = version + 1 where id = '" + id + "'"
+                );
+            }
+            return invocacion.callRealMethod();
+        })
+            .when(AopTestUtils.<ReservationProcessRepository>getUltimateTargetObject(procesos))
+            .save(any());
+
+        cancelar(id, null).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        assertThat(yaChoco[0]).isTrue();
+        assertThat(columna(id, "cancellation_reason")).isEqualTo("Cancelado en la catedra");
+        String versionAntes = columna(id, "version::text");
+
+        // El evento real llega tarde y queda sin efecto: ni el estado ni la versión cambian.
+        publicarAccion(cancelado(eventoNuevo()));
+        assertThat(columna(id, "status || '|' || version::text")).isEqualTo("CANCELLED|" + versionAntes);
+    }
+
     // ---------------------------------------------------------------------------------------------------------------
     // Ayudas
     // ---------------------------------------------------------------------------------------------------------------
+
+    /** CU-04 → pedido de teléfono → CU-06 → AppointmentConfirmed. Devuelve el id del proceso, ya CONFIRMED. */
+    private String confirmada() throws Exception {
+        String id = reservar();
+        String pedido = pedirTelefono();
+        enviarTelefono(id, "2615551234").andExpect(status().isAccepted());
+        publicarAccion(confirmado(eventoNuevo(), pedido));
+        assertThat(estado(id)).isEqualTo("CONFIRMED");
+        return id;
+    }
+
+    private ResultActions cancelar(String id, String cuerpo) throws Exception {
+        MockHttpServletRequestBuilder pedido = post("/api/reservation-processes/{id}/cancel", id).header(
+            HttpHeaders.AUTHORIZATION,
+            ReservationTestTokens.usuario(jwtKey, "reserva-flujos", ana)
+        );
+        return mvc.perform(cuerpo == null ? pedido : pedido.contentType(MediaType.APPLICATION_JSON).content(cuerpo));
+    }
+
+    private String cancelacionDeLaCatedra() {
+        return "{\"reservationId\":8251,\"reservationProcessId\":\"" + reservationProcessId + "\",\"status\":\"CANCELLED\",\"cancelledAt\":\"2026-12-14T12:50:00Z\"}";
+    }
+
+    private String cancelado(String eventId) {
+        return accion(
+            "AppointmentCancelled",
+            eventId,
+            ",\"reservationId\":8251,\"professionalId\":202,\"date\":\"2026-12-15\",\"startTime\":\"10:00\",\"status\":\"CANCELLED\"," +
+            "\"reason\":\"Cancelado en la catedra\",\"occurredAt\":\"2026-12-14T12:50:00Z\""
+        );
+    }
 
     private String reservar() throws Exception {
         String respuesta = reservarOtraVez().andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();

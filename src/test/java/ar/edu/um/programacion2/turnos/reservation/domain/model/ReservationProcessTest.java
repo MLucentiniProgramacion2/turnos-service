@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class ReservationProcessTest {
@@ -101,7 +102,14 @@ class ReservationProcessTest {
             }
             case confirmed -> despues.put("confirmation", Optional.of(CONFIRMACION_NUEVA));
             case expired, invalid, failed -> despues.put("closing", Optional.of(CIERRE_NUEVO));
-            case cancelled, cancelledByReconciliation -> despues.put("cancellation", Optional.of(CANCELACION));
+            case cancelled -> despues.put("cancellation", Optional.of(CANCELACION));
+            case cancelledByReconciliation -> {
+                // Guarda la confirmación que informa la cátedra solo si no tenía una: desde CONFIRMED conserva la suya.
+                despues.put("cancellation", Optional.of(CANCELACION));
+                if (((Optional<?>) antes.get("confirmation")).isEmpty()) {
+                    despues.put("confirmation", Optional.of(CONFIRMACION_NUEVA));
+                }
+            }
         }
         return despues;
     }
@@ -322,5 +330,30 @@ class ReservationProcessTest {
         foto.put("cancellation", p.getCancellation());
         foto.put("closing", p.getClosing());
         return foto;
+    }
+
+    @Test
+    void cancelarPorReconciliacionSinLaConfirmacionDeLaCatedraDejaElCanceladoSinConfirmacion() {
+        // La cátedra no informó reservationId o confirmedAt (dato degradado): se cancela igual, sin inventar la confirmación.
+        ReservationProcess proceso = ReservationProcessMatrix.procesoEn(ReservationProcessStatus.PHONE_SUBMITTED, 42);
+
+        assertThat(proceso.cancelledByReconciliation(CANCELACION, null, AHORA)).isEqualTo(new Applied(ReservationProcessStatus.PHONE_SUBMITTED, ReservationProcessStatus.CANCELLED));
+        assertThat(proceso.getConfirmation()).isEmpty();
+        assertThat(proceso.getCancellation()).contains(CANCELACION);
+    }
+
+    /** CU-10 4, 4a y 4b: solo CONFIRMED se cancela; CANCELLED responde sin llamar; el resto no se cancela. */
+    @ParameterizedTest
+    @EnumSource(ReservationProcessStatus.class)
+    void siSePuedeCancelarPorEstado(ReservationProcessStatus estado) {
+        ReservationProcess proceso = ReservationProcessMatrix.procesoEn(estado, 42);
+        CancellationCheck esperado = switch (estado) {
+            case CONFIRMED -> CancellationCheck.ALLOWED;
+            case CANCELLED -> CancellationCheck.ALREADY_CANCELLED;
+            default -> CancellationCheck.NOT_CANCELLABLE;
+        };
+
+        assertThat(proceso.canCancel()).isEqualTo(esperado);
+        assertThat(proceso.getStatus()).isEqualTo(estado);
     }
 }

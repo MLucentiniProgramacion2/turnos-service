@@ -10,7 +10,7 @@
 ## Contexto
 
 Turnos llama a la API REST de la cátedra para las ocupaciones (contrato §8), para crear y confirmar
-holds (§9 y §10) y, más adelante, para listar y cancelar reservas (§11 y §12). El catálogo ya eligió
+holds (§9 y §10) y para listar y cancelar reservas (§11 y §12, desde el #14). El catálogo ya eligió
 cómo hacer esos pedidos en su ADR 0004, para el snapshot. **Esta decisión adopta la suya y explica
 solo lo que cambia.** Turnos tiene dos diferencias:
 
@@ -89,12 +89,36 @@ conectar es "resultado desconocido". `HttpConnectTimeoutException` es subclase d
 Medido: si el servidor cierra la conexión sin responder, el cliente HTTP del JDK **repite el `GET`
 una vez por su cuenta** (llegan dos pedidos). Con un `POST` no lo hace (llega uno). No se desactiva:
 
-- solo afecta a consultas sin efectos (las ocupaciones, y el listado de reservas más adelante);
+- solo afecta a consultas sin efectos (las ocupaciones y el listado de reservas);
 - desactivarlo exige una propiedad de sistema que vale para toda la JVM.
 
 Lo fija un test (`CatedraOccupancyClientTest`), para que un cambio de JDK se note. La consecuencia
 es que "un solo intento por llamada" vale para los `POST`, pero un `GET` puede salir dos veces. Lo
 mismo pasa en el catálogo con el snapshot; no se tocó.
+
+### El listado de reservas (issue #14)
+
+`GET /api/appointments` (CU-09 y CU-11) devuelve una página por pedido, con `X-Total-Count` y `Link`
+(contrato §11). `CatedraAppointmentClient` recorre todas las páginas con estas reglas, medidas contra la
+cátedra real el 16/11:
+
+- **No sigue el `Link`.** Sus URL son absolutas, con el host de la cátedra. Seguirlas mandaría el JWT técnico
+  adonde diga la respuesta; la página siguiente se calcula con `page + 1`.
+- **El fin sale de `X-Total-Count`.** La cátedra recorta el `size` a 2000 sin avisar (con `size=5000` el
+  `Link` dice `size=2000`): comparar con el tamaño pedido haría parecer última a una página llena.
+- **Un total que cambia entre páginas es "no disponible"**: los ítems se corrieron y la lista puede tener
+  huecos. Repetir es seguro.
+- **Cotas:** páginas de 200 (`catedra.api.list-page-size`, de 1 a 2000), hasta 5 (`list-max-pages`; más es
+  respuesta inválida) y un plazo total de 10 s (`list-deadline`). Antes de pedir otra página se mira que
+  quede el peor caso de un pedido (2 + 5 = 7 s), así el plazo es un techo; por eso no puede ser menor que
+  ese peor caso (no arranca). Se mide con `System.nanoTime()`, no con el reloj de la reserva.
+- **Un ítem ilegible no tira la lista:** un `status` desconocido se conserva como desconocido; sin
+  `reservationProcessId` o con fecha u hora ilegibles, se ignora y se cuenta (con alguno ignorado, la lista
+  no prueba que una reserva falte).
+- **El DTO no declara `patientPhone` ni los nombres del paciente**: el `JsonMapper` los ignora y nunca llegan
+  a un objeto de turnos. El cuerpo nunca va al log.
+- **Un `400` sin `code`** (medido: un `status` que no existe da `"code": null`) es respuesta inválida, como
+  dice la tabla de arriba, no un rechazo.
 
 ## Alternativas consideradas
 

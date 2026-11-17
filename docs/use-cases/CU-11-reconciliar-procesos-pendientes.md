@@ -16,6 +16,9 @@ procesos que nunca se cierran y sin duplicar reservas.
 
 - El arranque del servicio.
 - El temporizador, cada N segundos (variable de entorno, por defecto 60 s).
+
+Implementados como **una sola tarea `fixedDelay` con demora inicial 0** (issue #14): el arranque es su primera
+ejecución y el temporizador, las siguientes, contadas desde que termina la anterior.
 - Indirectamente, CU-04 (timeout del confirm, DPT-07) y los listeners (DPT-22): dejan el proceso en
   su estado y lo toma la próxima ejecución.
 
@@ -75,9 +78,60 @@ procesos que nunca se cierran y sin duplicar reservas.
 - **4b. La cátedra responde `401` o `403 STUDENT_INTEGRATION_NOT_FOUND`:** problema de
   configuración de la cuenta técnica. Se registra el error y se corta la ejecución: los demás
   procesos fallarían igual. Los procesos quedan para la próxima ejecución.
+- **4c. Un proceso agotó los reintentos porque la cátedra no responde** (agregado en el #14): se registra el
+  error y se corta la ejecución, como en 4b: los demás procesos costarían lo mismo (unos 35 s cada uno) y
+  fallarían igual. Quedan para la próxima ejecución.
 - **5a. Un evento Kafka o una consulta de CU-09 movió el proceso mientras tanto:** el bloqueo
   optimista rechaza el cambio de CU-11. El proceso se vuelve a leer y se reevalúa con su estado
   nuevo, que puede ya no requerir acción (DPT-09).
+
+## Notas de implementación (issue #14)
+
+- **La tabla es una función del dominio** (`ReconciliationPolicy`), en dos pasos: sin la cátedra
+  (`CREATING_HOLD` viejo se cierra ahí mismo; el resto pregunta solo si ya corresponde) y con lo que informa
+  la cátedra. La convergencia con `CONFIRMED` y `CANCELLED` es la de CU-09. El caso de uso solo busca los
+  datos, pide la decisión y la aplica. Bordes exclusivos: exactamente a 1 minuto sin cambios, o exactamente en
+  `expiresAt` + 1 minuto, todavía no se actúa; el confirm se reintenta solo **antes** de `expiresAt`.
+- **Motivos de cierre propios** (`closing.reason`): `HOLD_OUTCOME_UNKNOWN` (`CREATING_HOLD` viejo, el mismo
+  que CU-04 8a), `NOT_FOUND_AFTER_EXPIRY`, `FAILED_IN_CATEDRA` y `PHONE_PENDING_TIMEOUT` (este con WARN y el
+  `reservationProcessId`, para revisarlo a mano). Con el confirm reintentado: `HOLD_EXPIRED` o el `code` del
+  rechazo.
+- **"No está en la lista" prueba algo solo si la lista se leyó entera:** sin fallas y sin ítems ignorados.
+- **5a: la decisión se recalcula sobre el proceso releído**, adentro del guardado. No alcanza con que el
+  modelo rechace el hecho viejo: si un rechazo trajo un `expiresAt` nuevo mientras se esperaba la lista, el
+  hecho viejo ("ausente → `EXPIRED`") se podría aplicar al `PHONE_REJECTED`, y la decisión nueva es esperar.
+- **Reintentos (4a):** la lista, hasta 3 con 1, 2 y 4 s si la cátedra no está disponible. El confirm, solo si
+  no se llegó a conectar, y antes de cada intento se vuelve a mirar `expiresAt`. Un resultado desconocido del
+  confirm no se repite: la próxima ejecución vuelve a listar antes.
+- **Las consultas a la cátedra no se juntan entre usuarios:** por DPT-17 cada usuario tiene a lo sumo un
+  intermedio, así que "agrupar por dueño" es una consulta por proceso, con `from = to =` la fecha del turno.
+  Juntar dueños traería la cuenta técnica entera y una prueba de ausencia más frágil.
+- **Una ejecución a la vez (1a):** `ReentrantLock` justo con `tryLock(0, ...)`, en memoria: supone una sola
+  instancia. Con la tarea única, la de arranque y la periódica no se superponen; el lock queda de resguardo.
+- **Cotas y peor caso** (2 s + 5 s por pedido; esperas 1 + 2 + 4 s):
+
+  | Tramo | Cuenta | Total |
+  | --- | --- | --- |
+  | Lista de un proceso, cátedra que no responde | 4 intentos × 7 s + 7 s de esperas | 35 s |
+  | Confirm de un proceso, sin conectar | 4 × 2 s + 7 s | 15 s |
+  | Ejecución con la cátedra caída | el primer proceso agota la lista y se corta (4c) | ~35 s |
+  | Ejecución con la cátedra lenta pero viva | no se empieza otro proceso pasados 2 min (`run-deadline`); el que empezó justo antes puede agotar la lista | 2 min + 35 s ≈ 155 s |
+
+  Supuesto que la hace cerrar: la cátedra responde o corta dentro de los timeouts del cliente, y la base
+  responde. Además, hasta 50 procesos le preguntan a la cátedra por ejecución (`max-processes-per-run`); los
+  demás, del más viejo al más nuevo, a la próxima.
+- **Al apagar:** Spring espera la tarea en curso hasta 30 s y después interrumpe el hilo. Medido: un pedido
+  en vuelo se corta en menos de 1 s y el hilo queda interrumpido, así que la próxima espera del backoff
+  termina la ejecución.
+- **Cuándo corre la primera (medido):** en el hilo del scheduler de Spring Boot
+  (`turnos-service-scheduling-1`), unos milisegundos antes de `ApplicationReadyEvent` y después de que
+  arrancó el consumidor de Kafka. No demora el arranque: el contexto queda listo aunque la ejecución siga.
+- **Log:** cada cambio en INFO (proceso, estado anterior, nuevo y motivo); el resumen (revisados, cambiados,
+  esperando, con error) en INFO si cambió algo, hubo un error o se cortó, y en DEBUG si no.
+- **Configuración** (`reservation.reconciliation.*`, validada al arrancar): `interval` (variable
+  `RESERVATION_RECONCILIATION_INTERVAL`, de 10 s a 10 min), `min-age` (1 min), `expiry-margin` (1 min),
+  `phone-pending-max-wait` (10 min), `retry-delays` (1, 2 y 4 s), `max-processes-per-run` (50) y
+  `run-deadline` (2 min). `enabled` solo la apaga `src/test`.
 
 ## Postcondiciones
 

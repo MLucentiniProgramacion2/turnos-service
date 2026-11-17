@@ -72,6 +72,9 @@ public class LiquibaseConfiguration {
         liquibase.setChangeLogParameters(liquibaseProperties.getParameters());
         liquibase.setRollbackFile(liquibaseProperties.getRollbackFile());
         liquibase.setTestRollbackOnUpdate(liquibaseProperties.isTestRollbackOnUpdate());
+        // spring.liquibase.analytics-enabled: SpringLiquibaseUtil de JHipster no lo copia, y sin él Liquibase pide
+        // https://config.liquibase.com/analytics.yaml al arrancar (issue #14).
+        liquibase.setAnalyticsEnabled(liquibaseProperties.getAnalyticsEnabled());
         if (env.matchesProfiles(JHipsterConstants.SPRING_PROFILE_NO_LIQUIBASE)) {
             liquibase.setShouldRun(false);
         } else {
