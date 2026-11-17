@@ -9,6 +9,7 @@ Cada sección se completa con el issue que implementa su caso de uso.
 | `GET /api/professionals/{professionalId}/availability` | [CU-03](use-cases/CU-03-consultar-turnos-disponibles.md) | implementado (#12) |
 | `POST /api/reservation-processes` | [CU-04](use-cases/CU-04-iniciar-reserva.md) | implementado (#12) |
 | `POST /api/reservation-processes/{id}/phone` | [CU-06](use-cases/CU-06-informar-telefono.md) | implementado (#12) |
+| `GET /api/reservation-processes/{id}` | [CU-08](use-cases/CU-08-consultar-estado-de-un-proceso.md) | implementado (#14) |
 
 ## Convenciones
 
@@ -106,7 +107,7 @@ Más los comunes: `500`, `502` y los dos `503`.
 
 ## El proceso de reserva
 
-Lo devuelven CU-04 y CU-06 (y lo va a devolver CU-08). Los bloques que no corresponden al estado no
+Lo devuelven CU-04, CU-06 y CU-08. Los bloques que no corresponden al estado no
 se mandan.
 
 ```json
@@ -208,3 +209,25 @@ estado (CU-08) hasta ver el resultado.
 | 409 | `RESERVATION_EXPIRED` | Pasó `expiresAt` | nada (el proceso lo cierra el evento de vencimiento) |
 | 503 | `PHONE_SUBMISSION_UNCONFIRMED` | Kafka no confirmó el envío | el proceso no cambia. **Se puede volver a enviar**; si el primer envío había llegado, la cátedra procesa los dos y gana el primer resultado |
 | 500 | `INTERNAL_ERROR` | El teléfono se publicó pero no se pudo guardar el envío | el proceso avanza cuando llegue el resultado |
+
+## CU-08: el estado de un proceso
+
+```http
+GET /api/reservation-processes/{id}
+Authorization: Bearer <JWT de usuario>
+```
+
+`200 OK` + proceso, con el mismo formato que devuelven CU-04 y CU-06. Es lo que la app consulta cada 2 s con la
+pantalla del proceso abierta (DPT-04): así se entera del pedido de teléfono, de un rechazo y del resultado, que llegan
+por Kafka.
+
+- Lee solo lo guardado: no llama al catálogo ni a la cátedra, así que responde aunque estén caídos.
+- **No modifica nada**, tampoco si pasó `expiresAt`: el proceso lo cierra el evento de la cátedra (CU-07) o la
+  reconciliación (CU-11). Si pasó `expiresAt` + 1 minuto y sigue en un estado intermedio, la app deja de consultar y
+  manda al usuario a "Mis reservas" (CU-08 4a).
+- Un administrador ve acá **solo sus propios procesos** (DPT-14); los de todos están en `/api/admin/...`.
+
+| HTTP | `code` | Cuándo |
+| --- | --- | --- |
+| 400 | (sin `code`) | `{id}` no es un UUID. El `detail` es fijo; el valor solo aparece en `path`, que es la URI |
+| 404 | `RESERVATION_PROCESS_NOT_FOUND` | El proceso no existe **o es de otro usuario** (la respuesta es la misma) |

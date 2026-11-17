@@ -2,17 +2,21 @@ package ar.edu.um.programacion2.turnos.reservation.application.service;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.EventOutcome;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcess;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationEvent;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationCommand;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneCommand;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetAvailabilityUseCase;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetReservationProcessUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandlePhoneRequestedUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandleProcessOutcomeUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
 import java.time.LocalDate;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +33,7 @@ public class ReservationService {
     private final HandlePhoneRequestedUseCase handlePhoneRequestedUseCase;
     private final HandleProcessOutcomeUseCase handleProcessOutcomeUseCase;
     private final SubmitPhoneUseCase submitPhoneUseCase;
+    private final GetReservationProcessUseCase getReservationProcessUseCase;
 
     /** CU-03. */
     public AvailabilityResult getAvailability(long professionalId, LocalDate from, LocalDate to, String requestedBy) {
@@ -53,5 +58,10 @@ public class ReservationService {
     /** CU-06. */
     public SubmitPhoneResult submitPhone(SubmitPhoneCommand command) {
         return submitPhoneUseCase.submit(command);
+    }
+
+    /** CU-08. */
+    public Optional<ReservationProcess> getReservationProcess(long userId, ReservationProcessId processId) {
+        return getReservationProcessUseCase.get(userId, processId);
     }
 }

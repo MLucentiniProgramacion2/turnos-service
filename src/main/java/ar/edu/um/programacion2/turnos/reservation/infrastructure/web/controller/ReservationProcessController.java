@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,8 +22,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Adaptador de entrada REST de los procesos de reserva: {@code POST /api/reservation-processes} (CU-04) y
- * {@code POST /api/reservation-processes/{id}/phone} (CU-06).
+ * Adaptador de entrada REST de los procesos de reserva: {@code POST /api/reservation-processes} (CU-04),
+ * {@code POST /api/reservation-processes/{id}/phone} (CU-06) y {@code GET /api/reservation-processes/{id}} (CU-08).
  * <p>
  * Lo protege la regla de {@code /api/**}: {@code 401} sin token o con uno inválido, {@code 403} con el token técnico de
  * servicio. <strong>La identidad sale del token</strong> ({@code userId} y login, DPT-21): el cuerpo no trae ningún dato
@@ -87,5 +88,19 @@ public class ReservationProcessController {
             case SubmitPhoneResult.Unconfirmed unconfirmed -> throw ReservationErrorResponses.phoneSubmissionUnconfirmed();
             case SubmitPhoneResult.SaveFailed saveFailed -> throw ReservationErrorResponses.internalError();
         };
+    }
+
+    /**
+     * CU-08. La app lo consulta cada 2 s (DPT-04). El proceso se busca con el {@code userId} del token: uno ajeno responde
+     * {@code 404}, igual que uno que no existe, también para un administrador (DPT-14: el acceso ampliado es solo de
+     * {@code /api/admin/...}). Un {@code id} que no es un UUID da {@code 400} sin repetir el valor.
+     */
+    @GetMapping("/{id}")
+    public ReservationProcessResponse getReservationProcess(@PathVariable("id") UUID id) {
+        long userId = SecurityUtils.getCurrentUserId().orElseThrow(ReservationErrorResponses::userNotFound);
+        return reservationService
+            .getReservationProcess(userId, new ReservationProcessId(id))
+            .map(mapper::toResponse)
+            .orElseThrow(ReservationErrorResponses::processNotFound);
     }
 }

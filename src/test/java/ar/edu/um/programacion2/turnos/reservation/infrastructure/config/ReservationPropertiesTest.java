@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import ar.edu.um.programacion2.turnos.reservation.application.usecases.EventTransactions;
+import ar.edu.um.programacion2.turnos.reservation.application.usecases.ReadTransactions;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityPolicy;
 import java.time.Clock;
 import java.time.ZoneId;
@@ -14,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.ConfigurationPropertiesBindException;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 
 /** Las reglas de fechas (DPT-10) se validan al arrancar: una zona o un horizonte inválidos no levantan la aplicación. */
 class ReservationPropertiesTest {
@@ -95,5 +97,15 @@ class ReservationPropertiesTest {
     void lasTransaccionesDeLosEventosNoReemplazanAlTransactionTemplateDeSpringBoot() {
         // Si EventTransactions fuera un TransactionTemplate, la autoconfiguración de Spring Boot no crearía el suyo.
         runner.run(context -> assertThat(context.getBeansOfType(org.springframework.transaction.support.TransactionOperations.class)).isEmpty());
+    }
+
+    @Test
+    void lasTransaccionesDeLasConsultasSonDeSoloLecturaYRepeatableRead() {
+        // CU-09 y CU-12 leen la página y el total en la misma foto. Tampoco es un TransactionTemplate (test de arriba).
+        runner.run(context -> {
+            ReadTransactions consultas = context.getBean(ReadTransactions.class);
+            assertThat(consultas.template().isReadOnly()).isTrue();
+            assertThat(consultas.template().getIsolationLevel()).isEqualTo(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        });
     }
 }
