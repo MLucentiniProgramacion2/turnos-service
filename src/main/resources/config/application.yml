@@ -89,6 +89,10 @@ management:
 spring:
   application:
     name: turnosService
+  liquibase:
+    # Sin esto, Liquibase 5 pide https://config.liquibase.com/analytics.yaml en cada arranque (y manda estadísticas
+    # de uso). LiquibaseConfiguration de JHipster lo copia al SpringLiquibase. Mismo valor en el YAML de src/test.
+    analytics-enabled: false
   config:
     # Lee las variables de .env (ignorado por Git) desde el directorio de trabajo.
     # Es opcional: en contenedores las variables llegan por el entorno.

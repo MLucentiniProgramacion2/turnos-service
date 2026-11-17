@@ -115,6 +115,11 @@ public final class FakeHttpServer implements AutoCloseable {
         routes.put(pathSuffix, exchange -> send(exchange, status, "application/json", body, Map.of()));
     }
 
+    /** Como {@link #routeJson}, con cabeceras (por ejemplo {@code X-Total-Count}). */
+    public void route(String pathSuffix, int status, String body, Map<String, String> headers) {
+        routes.put(pathSuffix, exchange -> send(exchange, status, "application/json", body, headers));
+    }
+
     public void routeProblem(String pathSuffix, int status, String code) {
         String body = "{\"title\":\"Error\",\"status\":" + status + ",\"detail\":\"detalle libre que no se usa\",\"code\":\"" + code + "\"}";
         routes.put(pathSuffix, exchange -> send(exchange, status, "application/problem+json", body, Map.of()));

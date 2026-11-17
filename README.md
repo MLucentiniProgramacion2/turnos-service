@@ -198,6 +198,8 @@ tokens ni URLs.
 ```bash
 # Ocupaciones reales de la cátedra (un GET, sin efectos). Necesita ZeroTier.
 ./mvnw test -Dtest=CatedraOccupancyManualCheck -Dcatedra.manual=true -Dprofesional=202 -Ddesde=2026-12-14 -Dhasta=2026-12-18
+# Las reservas reales de un paciente (un GET, sin efectos), con páginas de 1 para recorrer la paginación de verdad.
+./mvnw test -Dtest=CatedraAppointmentsManualCheck -Dcatedra.manual=true -Dpaciente=user-1101 -Ddesde=2027-01-05 -Dhasta=2027-01-05 -Dsize=1
 # Tres rechazos de la cátedra real que no crean nada: PROFESSIONAL_NOT_FOUND, INVALID_SLOT y HOLD_NOT_FOUND.
 ./mvnw test -Dtest=CatedraHoldRejectionsManualCheck -Dcatedra.manual=true
 # La agenda de un profesional en el catálogo local, con un token de servicio firmado como lo firma turnos.

@@ -12,7 +12,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +22,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.event.EventListener;
 import org.springframework.kafka.event.ConsumerStartedEvent;
+import org.springframework.scheduling.config.ScheduledTask;
+import org.springframework.scheduling.config.ScheduledTaskHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -31,6 +35,9 @@ import org.springframework.test.context.TestPropertySource;
  * <p>
  * Además <strong>mide</strong> (opción B del plan del #14) en qué hilo corre la primera ejecución y cuándo, respecto de
  * {@code ApplicationReadyEvent} y del arranque del consumidor de Kafka. Lo deja en la salida del test.
+ * <p>
+ * Al terminar se cancela la tarea programada, para no dejar en la caché de Spring un contexto que la siga ejecutando. No se
+ * cierra el contexto con {@code @DirtiesContext}: eso detiene el contenedor de PostgreSQL que comparten los demás.
  */
 @IntegrationTest
 @Import(ReconciliationSchedulingIT.Doble.class)
@@ -97,6 +104,15 @@ class ReconciliationSchedulingIT {
         void consumidor() {
             CONSUMIDOR.compareAndSet(0, System.nanoTime());
         }
+    }
+
+    @Autowired
+    private ScheduledTaskHolder tareasProgramadas;
+
+    @AfterEach
+    void cancelarLaReconciliacionProgramada() {
+        SOLTAR.countDown();
+        tareasProgramadas.getScheduledTasks().forEach(ScheduledTask::cancel);
     }
 
     @Test
