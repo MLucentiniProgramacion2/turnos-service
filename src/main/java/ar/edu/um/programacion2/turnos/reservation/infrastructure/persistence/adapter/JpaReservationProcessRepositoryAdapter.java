@@ -1,8 +1,10 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.persistence.adapter;
 
+import ar.edu.um.programacion2.turnos.reservation.domain.model.PageQuery;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcess;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessStatus;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ResultPage;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.IntermediateProcessConflictException;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.ReservationProcessRepository;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.persistence.entity.ReservationProcessEntity;
@@ -18,6 +20,9 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -105,6 +110,17 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
     @Override
     public Optional<ReservationProcess> findByIdAndOwner(ReservationProcessId id, long userId) {
         return jpaRepository.findByIdAndUserId(id.value(), userId).map(mapper::toDomain);
+    }
+
+    /** Orden total de "mis reservas": el turno más lejano primero, como la cátedra (§11); el {@code id} desempata. */
+    static final Sort OWNER_PAGE_ORDER = Sort.by(Sort.Order.desc("appointmentDate"), Sort.Order.desc("startTime"), Sort.Order.asc("id"));
+
+    @Override
+    public ResultPage<ReservationProcess> findPageByOwner(long userId, Set<ReservationProcessStatus> statuses, PageQuery page) {
+        // Sin filtro es "todos": se pasa la lista completa para que la consulta tenga una sola forma.
+        Set<ReservationProcessStatus> filter = statuses.isEmpty() ? EnumSet.allOf(ReservationProcessStatus.class) : statuses;
+        Page<ReservationProcessEntity> found = jpaRepository.findByUserIdAndStatusIn(userId, filter, PageRequest.of(page.number(), page.size(), OWNER_PAGE_ORDER));
+        return new ResultPage<>(found.getContent().stream().map(mapper::toDomain).toList(), page.number(), page.size(), found.getTotalElements());
     }
 
     private static Set<ReservationProcessStatus> intermediateOrConfirmed() {

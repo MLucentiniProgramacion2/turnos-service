@@ -1,10 +1,14 @@
 package ar.edu.um.programacion2.turnos.reservation.domain.ports.out;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcess;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.PageQuery;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessStatus;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ResultPage;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Los procesos de reserva guardados. Las operaciones son las que piden los casos de uso (CU-04 en adelante), no un CRUD.
@@ -47,4 +51,12 @@ public interface ReservationProcessRepository {
 
     /** El proceso con ese identificador <strong>si es de ese usuario</strong>. */
     Optional<ReservationProcess> findByIdAndOwner(ReservationProcessId id, long userId);
+
+    /**
+     * Una página de los procesos del usuario (CU-09), en orden total: fecha del turno descendente, hora descendente e
+     * {@code id} para desempatar (como la cátedra, §11). El total cuenta todos los que cumplen el filtro.
+     *
+     * @param statuses los estados pedidos; vacío es "todos"
+     */
+    ResultPage<ReservationProcess> findPageByOwner(long userId, Set<ReservationProcessStatus> statuses, PageQuery page);
 }

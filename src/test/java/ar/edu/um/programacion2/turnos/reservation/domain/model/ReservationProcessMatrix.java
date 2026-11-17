@@ -65,7 +65,7 @@ public final class ReservationProcessMatrix {
         expired((p, now) -> p.expired(CIERRE_NUEVO, now)),
         invalid((p, now) -> p.invalid(CIERRE_NUEVO, now)),
         cancelled((p, now) -> p.cancelled(CANCELACION, now)),
-        cancelledByReconciliation((p, now) -> p.cancelledByReconciliation(CANCELACION, now)),
+        cancelledByReconciliation((p, now) -> p.cancelledByReconciliation(CANCELACION, CONFIRMACION_NUEVA, now)),
         failed((p, now) -> p.failed(CIERRE_NUEVO, now));
 
         private final BiFunction<ReservationProcess, Instant, TransitionResult> accion;

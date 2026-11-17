@@ -7,6 +7,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +17,13 @@ import org.springframework.data.repository.query.Param;
 public interface JpaReservationProcessRepository extends JpaRepository<ReservationProcessEntity, UUID> {
     /** Consulta derivada: los procesos del usuario en alguno de esos estados. */
     List<ReservationProcessEntity> findByUserIdAndStatusIn(Long userId, Collection<ReservationProcessStatus> statuses);
+
+    /**
+     * Consulta derivada con paginación (CU-09): una página de los procesos del usuario en esos estados, con el orden que
+     * trae el {@link Pageable}, y el total. Spring Data hace el {@code count} solo si hace falta: si la primera página no se
+     * llena, el total es lo que trajo.
+     */
+    Page<ReservationProcessEntity> findByUserIdAndStatusIn(Long userId, Collection<ReservationProcessStatus> statuses, Pageable pageable);
 
     /** Consulta derivada: el proceso con ese ID de la cátedra (columna única). */
     Optional<ReservationProcessEntity> findByReservationProcessId(String reservationProcessId);

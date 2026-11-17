@@ -2,6 +2,8 @@ package ar.edu.um.programacion2.turnos.reservation.application.service;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.EventOutcome;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservations;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservationsQuery;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcess;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationEvent;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
@@ -13,6 +15,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetAvailabilit
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetReservationProcessUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandlePhoneRequestedUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandleProcessOutcomeUseCase;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.ListMyReservationsUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
 import java.time.LocalDate;
@@ -34,6 +37,7 @@ public class ReservationService {
     private final HandleProcessOutcomeUseCase handleProcessOutcomeUseCase;
     private final SubmitPhoneUseCase submitPhoneUseCase;
     private final GetReservationProcessUseCase getReservationProcessUseCase;
+    private final ListMyReservationsUseCase listMyReservationsUseCase;
 
     /** CU-03. */
     public AvailabilityResult getAvailability(long professionalId, LocalDate from, LocalDate to, String requestedBy) {
@@ -63,5 +67,10 @@ public class ReservationService {
     /** CU-08. */
     public Optional<ReservationProcess> getReservationProcess(long userId, ReservationProcessId processId) {
         return getReservationProcessUseCase.get(userId, processId);
+    }
+
+    /** CU-09. */
+    public MyReservations listMyReservations(MyReservationsQuery query) {
+        return listMyReservationsUseCase.list(query);
     }
 }

@@ -1,16 +1,24 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.web.controller;
 
 import ar.edu.um.programacion2.turnos.reservation.application.service.ReservationService;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservations;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservationsQuery;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.PageQuery;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcess;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneCommand;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ResultPage;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneResult;
+import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.MyReservationsParams;
+import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.ReservationProcessPageResponse;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.ReservationProcessResponse;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.StartReservationRequest;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.SubmitPhoneRequest;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.mapper.ReservationProcessDtoMapper;
 import ar.edu.um.programacion2.turnos.security.SecurityUtils;
 import jakarta.validation.Valid;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -23,7 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Adaptador de entrada REST de los procesos de reserva: {@code POST /api/reservation-processes} (CU-04),
- * {@code POST /api/reservation-processes/{id}/phone} (CU-06) y {@code GET /api/reservation-processes/{id}} (CU-08).
+ * {@code POST /api/reservation-processes/{id}/phone} (CU-06), {@code GET /api/reservation-processes/{id}} (CU-08) y
+ * {@code GET /api/reservation-processes} (CU-09).
  * <p>
  * Lo protege la regla de {@code /api/**}: {@code 401} sin token o con uno inválido, {@code 403} con el token técnico de
  * servicio. <strong>La identidad sale del token</strong> ({@code userId} y login, DPT-21): el cuerpo no trae ningún dato
@@ -102,5 +111,26 @@ public class ReservationProcessController {
             .getReservationProcess(userId, new ReservationProcessId(id))
             .map(mapper::toResponse)
             .orElseThrow(ReservationErrorResponses::processNotFound);
+    }
+
+    /**
+     * CU-09: los procesos del usuario del token (un administrador también ve solo los suyos, DPT-14), ya convergidos con la
+     * cátedra. Si la cátedra no respondió, {@code 200} igual, con {@code catedraUpToDate: false} (4b, 4c).
+     */
+    @GetMapping
+    public ReservationProcessPageResponse listMyReservations(@Valid MyReservationsParams params) {
+        long userId = SecurityUtils.getCurrentUserId().orElseThrow(ReservationErrorResponses::userNotFound);
+        MyReservations result = reservationService.listMyReservations(
+            new MyReservationsQuery(userId, Set.copyOf(params.statusOrEmpty()), new PageQuery(params.pageOrDefault(), params.sizeOrDefault()))
+        );
+        ResultPage<ReservationProcess> page = result.page();
+        return new ReservationProcessPageResponse(
+            page.number(),
+            page.size(),
+            page.totalElements(),
+            page.totalPages(),
+            result.catedraUpToDate(),
+            page.items().stream().map(mapper::toResponse).toList()
+        );
     }
 }

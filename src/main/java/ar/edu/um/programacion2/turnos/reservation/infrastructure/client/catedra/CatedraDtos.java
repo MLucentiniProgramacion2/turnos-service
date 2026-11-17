@@ -23,6 +23,24 @@ final class CatedraDtos {
 
     record ConfirmResponse(String reservationProcessId, String status, String expiresAt) {}
 
+    /**
+     * Un ítem de {@code GET /api/appointments} (contrato §11). <strong>No declara {@code patientPhone},
+     * {@code patientFirstName} ni {@code patientLastName}</strong>: el {@code JsonMapper} ignora lo que no está declarado,
+     * así esos datos personales no llegan a ningún objeto de turnos. {@code reservationId} es un número: un texto o un
+     * decimal hacen ilegible la página entera.
+     */
+    record AppointmentItem(
+        Long reservationId,
+        String reservationProcessId,
+        String externalPatientId,
+        String appointmentDate,
+        String startTime,
+        String status,
+        String confirmedAt,
+        String cancelledAt,
+        String cancellationReason
+    ) {}
+
     /** De un {@code problem+json} solo interesa el {@code code}: nunca se decide por {@code detail} (contrato §13). */
     record Problem(String code) {}
 }

@@ -1,5 +1,8 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra;
 
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.net.URI;
@@ -43,6 +46,43 @@ public class CatedraApiProperties {
     @NotNull
     private Duration readTimeout = Duration.ofSeconds(5);
 
+    /**
+     * Tamaño de página al listar reservas ({@code GET /api/appointments}, CU-09 y CU-11). La cátedra recorta a 2000 sin
+     * avisar (medido el 16/11), así que no se puede pedir más. Con {@code externalPatientId} y un rango de fechas, lo normal
+     * es una página con pocos ítems: 200 deja margen sin traer respuestas de más de 1 MB por ZeroTier.
+     */
+    @NotNull
+    @Min(1)
+    @Max(2000)
+    private Integer listPageSize = 200;
+
+    /** Cuántas páginas se leen como máximo en un listado: más es una respuesta fuera de lo esperable. */
+    @NotNull
+    @Min(1)
+    @Max(50)
+    private Integer listMaxPages = 5;
+
+    /**
+     * Plazo total de un listado, con todas sus páginas. No se empieza una página que no podría terminar a tiempo (el peor
+     * caso de un pedido es {@code connect-timeout + read-timeout}), así que es un techo real.
+     */
+    @NotNull
+    private Duration listDeadline = Duration.ofSeconds(10);
+
+    /** El peor caso de un solo pedido: conectar y leer la respuesta entera. */
+    public Duration requestWorstCase() {
+        return connectTimeout.plus(readTimeout);
+    }
+
+    /**
+     * La primera página se pide siempre; las siguientes, solo si queda al menos el peor caso de un pedido. Con un plazo
+     * menor que ese peor caso, la primera ya podría pasarlo y el plazo dejaría de ser un techo.
+     */
+    @AssertTrue(message = "catedra.api.list-deadline tiene que ser al menos connect-timeout + read-timeout")
+    public boolean isListDeadlineEnoughForOneRequest() {
+        return connectTimeout == null || readTimeout == null || listDeadline == null || listDeadline.compareTo(requestWorstCase()) >= 0;
+    }
+
     @Override
     public String toString() {
         return (
@@ -52,6 +92,12 @@ public class CatedraApiProperties {
             connectTimeout +
             ", readTimeout=" +
             readTimeout +
+            ", listPageSize=" +
+            listPageSize +
+            ", listMaxPages=" +
+            listMaxPages +
+            ", listDeadline=" +
+            listDeadline +
             "}"
         );
     }

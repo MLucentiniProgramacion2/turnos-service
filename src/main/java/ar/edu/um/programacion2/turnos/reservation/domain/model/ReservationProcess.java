@@ -331,8 +331,15 @@ public class ReservationProcess {
     /**
      * La cátedra informa la reserva como {@code CANCELLED} al reconciliar (CU-09, CU-11): es el único camino de un
      * intermedio a {@code CANCELLED}. También vale desde {@code CONFIRMED}.
+     * <p>
+     * En la cátedra solo se cancela lo que estuvo confirmado, así que la reserva cancelada trae su {@code reservationId} y
+     * su {@code confirmedAt}. Si el proceso no tenía la confirmación (se perdió el {@code AppointmentConfirmed}), se guarda
+     * la que informa la cátedra; si ya tenía una, no se pisa: la de {@code AppointmentConfirmed} o la de una reconciliación
+     * anterior es la misma reserva.
+     *
+     * @param knownConfirmation la confirmación que informa la cátedra, o {@code null} si no la informó completa
      */
-    public TransitionResult cancelledByReconciliation(Cancellation newCancellation, Instant now) {
+    public TransitionResult cancelledByReconciliation(Cancellation newCancellation, Confirmation knownConfirmation, Instant now) {
         Objects.requireNonNull(newCancellation, "Faltan los datos de la cancelación");
         requireNow(now);
         if (status.isFinal()) {
@@ -340,6 +347,9 @@ public class ReservationProcess {
         }
         if (status == CREATING_HOLD) {
             return noEffect(NoEffectReason.NOT_APPLICABLE);
+        }
+        if (confirmation == null) {
+            confirmation = knownConfirmation;
         }
         cancellation = newCancellation;
         return moveTo(CANCELLED, now);

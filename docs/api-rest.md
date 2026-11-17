@@ -10,6 +10,7 @@ Cada sección se completa con el issue que implementa su caso de uso.
 | `POST /api/reservation-processes` | [CU-04](use-cases/CU-04-iniciar-reserva.md) | implementado (#12) |
 | `POST /api/reservation-processes/{id}/phone` | [CU-06](use-cases/CU-06-informar-telefono.md) | implementado (#12) |
 | `GET /api/reservation-processes/{id}` | [CU-08](use-cases/CU-08-consultar-estado-de-un-proceso.md) | implementado (#14) |
+| `GET /api/reservation-processes` | [CU-09](use-cases/CU-09-consultar-mis-reservas.md) | implementado (#14) |
 
 ## Convenciones
 
@@ -107,7 +108,7 @@ Más los comunes: `500`, `502` y los dos `503`.
 
 ## El proceso de reserva
 
-Lo devuelven CU-04, CU-06 y CU-08. Los bloques que no corresponden al estado no
+Lo devuelven CU-04, CU-06 y CU-08, y es cada elemento de la lista de CU-09. Los bloques que no corresponden al estado no
 se mandan.
 
 ```json
@@ -131,7 +132,7 @@ se mandan.
 | `professional` | siempre | Datos del profesional al iniciar la reserva, solo para mostrar |
 | `phoneRequest` | desde `PHONE_REQUESTED` | La cátedra pidió el teléfono; `message` es su texto, si lo mandó |
 | `rejection` | en `PHONE_REJECTED` (y después) | El último rechazo del teléfono: `reason` y `message` de la cátedra |
-| `confirmation` | en `CONFIRMED` (y `CANCELLED`) | `confirmedAt` |
+| `confirmation` | en `CONFIRMED` (y `CANCELLED`, si se conoce) | `confirmedAt`: cuándo la confirmó la cátedra |
 | `cancellation` | en `CANCELLED` | `reason` (puede faltar) y `cancelledAt` |
 | `closing` | en `EXPIRED`, `INVALID` y `FAILED` | `reason`: un código (de la cátedra, o propio como `HOLD_OUTCOME_UNKNOWN`), no un texto para mostrar |
 
@@ -231,3 +232,66 @@ por Kafka.
 | --- | --- | --- |
 | 400 | (sin `code`) | `{id}` no es un UUID. El `detail` es fijo; el valor solo aparece en `path`, que es la URI |
 | 404 | `RESERVATION_PROCESS_NOT_FOUND` | El proceso no existe **o es de otro usuario** (la respuesta es la misma) |
+
+## CU-09: mis reservas
+
+```http
+GET /api/reservation-processes?status=CONFIRMED,CANCELLED&page=0&size=20
+Authorization: Bearer <JWT de usuario>
+```
+
+| Parámetro | Obligatorio | Regla |
+| --- | --- | --- |
+| `status` | no | Uno o varios estados del proceso, separados por coma o repitiendo el parámetro (`status=CONFIRMED&status=CANCELLED`). Sin ninguno, todos |
+| `page` | no | Desde 0 (por defecto) hasta 10 000 |
+| `size` | no | De 1 a 50; por defecto 20 |
+
+`200 OK`, también si la cátedra no respondió:
+
+```json
+{
+  "page": 0,
+  "size": 20,
+  "totalElements": 2,
+  "totalPages": 1,
+  "catedraUpToDate": true,
+  "processes": [
+    {
+      "id": "5f0c1c5e-3d0e-4a53-9f43-0b1a8c0b7f11",
+      "status": "CANCELLED",
+      "expiresAt": "2026-12-14T12:40:05Z",
+      "appointment": { "professionalId": 202, "date": "2026-12-15", "startTime": "10:00:00", "endTime": "10:30:00" },
+      "professional": { "firstName": "Ana", "lastName": "Gomez", "categoryName": "Clinica medica", "slotDurationMinutes": 30 },
+      "phoneRequest": { "message": "Ingrese un numero de telefono para continuar." },
+      "confirmation": { "confirmedAt": "2026-12-14T12:41:00Z" },
+      "cancellation": { "reason": "Cambio de planes", "cancelledAt": "2026-12-16T09:00:00Z" }
+    }
+  ]
+}
+```
+
+- **Solo los procesos del usuario del token**, de la tabla local (DPT-01, DPT-21). Una reserva que la cátedra tiene para
+  la cuenta técnica y no tiene un proceso local no aparece nunca, aunque tenga el mismo `externalPatientId`. Un
+  administrador también ve acá solo lo suyo (DPT-14).
+- **Orden:** fecha del turno descendente, hora descendente y, a igualdad, el `id`. `totalElements` y `totalPages` son de
+  la misma lectura que la página; una página fuera de rango viene vacía con los totales.
+- **Cada proceso, con el mismo formato que CU-04, CU-06 y CU-08**, ya **convergido** con la cátedra: lo que la cátedra
+  informa (confirmación, cancelación con su motivo y su instante) sale de los bloques `confirmation` y `cancellation` del
+  proceso, nunca de la respuesta de la cátedra.
+- **Convergencia hacia adelante:** si la cátedra tiene la reserva más avanzada que el proceso local, el proceso se
+  actualiza antes de responder (en curso → `CONFIRMED`; en curso o `CONFIRMED` → `CANCELLED`). Nunca se retrocede ni se
+  reabre un estado final. Por eso es un `GET` que puede escribir: lo que escribe es lo mismo que traería el evento de
+  Kafka, solo avanza y repetirlo no cambia nada.
+- **El filtro `status` se aplica antes de converger.** Un proceso pedido como `CONFIRMED` puede venir `CANCELLED` si la
+  cátedra lo informa así: es su estado actual. El total no se recalcula.
+- **`catedraUpToDate`:** `false` si hacía falta preguntarle a la cátedra y no respondió (o respondió un error): los
+  procesos vienen con el estado local, y la app puede mostrar "no se pudo actualizar". `true` si se consultó, y también
+  si no hacía falta (no hay procesos, o ninguno puede cambiar: un estado final o un proceso sin hold no cambia por lo que
+  diga la cátedra). Un proceso en curso que la cátedra todavía no cerró se muestra tal cual; lo cierra la reconciliación
+  (CU-11).
+
+| HTTP | `code` | Cuándo |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `status` con un valor que no es un estado, o `page` o `size` fuera de rango. No se repite el valor |
+
+La cátedra caída **no** es un error de este endpoint: es `200` con `catedraUpToDate: false`.
