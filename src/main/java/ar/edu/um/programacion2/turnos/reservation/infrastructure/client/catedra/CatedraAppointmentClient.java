@@ -1,10 +1,12 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.client.catedra;
 
+import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraCancellation;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraReservation;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraReservationList;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraReservationStatus;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.AppointmentGateway;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.CatedraInvalidResponseException;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.CatedraOutcomeUnknownException;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.out.CatedraUnavailableException;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.client.LocalTimeFormat;
 import java.time.Duration;
@@ -20,12 +22,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.core.JacksonException;
 
 /**
- * Adaptador de salida: las reservas de la cátedra (contrato §11 y §12).
+ * Adaptador de salida: las reservas de la cátedra (contrato §11 y §12): listarlas (CU-09, CU-11) y cancelarlas (CU-10).
  * <p>
  * <strong>El listado recorre todas las páginas</strong>, con estas reglas (CU-09 paso 4, medido el 16/11):
  * <ul>
@@ -53,10 +56,12 @@ import tools.jackson.core.JacksonException;
 public class CatedraAppointmentClient implements AppointmentGateway {
 
     static final String APPOINTMENTS_PATH = "/api/appointments";
+    static final String CANCEL_PATH = "/api/appointments/{reservationProcessId}/cancel";
     static final String TOTAL_COUNT = "X-Total-Count";
 
     private static final Logger LOG = LoggerFactory.getLogger(CatedraAppointmentClient.class);
     private static final String LIST_OPERATION = "al listar las reservas";
+    private static final String CANCEL_OPERATION = "al cancelar la reserva";
 
     private final RestClient restClient;
     private final CatedraApiProperties properties;
@@ -126,6 +131,42 @@ public class CatedraAppointmentClient implements AppointmentGateway {
                 LOG.error("La página {} de reservas vino vacía y faltan {} de {}", page, total - received, total);
                 throw new CatedraInvalidResponseException("Una página de reservas vino vacía antes de llegar al total");
             }
+        }
+    }
+
+    /**
+     * {@code POST /api/appointments/{reservationProcessId}/cancel} (contrato §12). Con efectos: la misma clasificación que
+     * el hold (solo no haber podido conectar prueba que no se aplicó). Sin motivo no se manda cuerpo (medido el 16/11: la
+     * cátedra lo acepta). Un {@code 200} que no dice {@code CANCELLED} para ese proceso, o que no se puede leer, es
+     * resultado desconocido: la cátedra dijo "éxito", así que la cancelación pudo haberse aplicado (ADR 0004). El motivo
+     * nunca va al log.
+     */
+    @Override
+    public CatedraCancellation cancel(String reservationProcessId, String reason) {
+        Objects.requireNonNull(reservationProcessId, "Falta el reservationProcessId");
+        // El reservationProcessId va como variable de la URI: RestClient lo codifica, así un valor raro no cambia la ruta.
+        RestClient.RequestBodySpec post = restClient.post().uri(CANCEL_PATH, reservationProcessId);
+        RestClient.RequestHeadersSpec<?> request = reason == null
+            ? post
+            : post.contentType(MediaType.APPLICATION_JSON).body(CatedraJson.MAPPER.writeValueAsBytes(new CatedraDtos.CancelRequest(reason)));
+        byte[] body = CatedraCalls.call(request, CANCEL_OPERATION, true, 200);
+        try {
+            CatedraDtos.CancelResponse response = CatedraJson.MAPPER.readValue(body, CatedraDtos.CancelResponse.class);
+            CatedraFormat.required(response, "el cuerpo");
+            if (!"CANCELLED".equals(response.status())) {
+                throw new IllegalArgumentException("status no es CANCELLED");
+            }
+            if (!reservationProcessId.equals(response.reservationProcessId())) {
+                throw new IllegalArgumentException("reservationProcessId no es el pedido");
+            }
+            return new CatedraCancellation(reservationProcessId, response.reservationId(), CatedraFormat.instant(response.cancelledAt(), "cancelledAt"));
+        } catch (JacksonException | IllegalArgumentException | NullPointerException e) {
+            String detail = e instanceof JacksonException jackson ? jackson.getOriginalMessage() : e.getMessage();
+            LOG.warn("Respuesta exitosa ilegible {}: {}", CANCEL_OPERATION, detail);
+            throw new CatedraOutcomeUnknownException(
+                "La cátedra respondió con éxito " + CANCEL_OPERATION + ", pero la respuesta no respeta el contrato: resultado desconocido",
+                e
+            );
         }
     }
 

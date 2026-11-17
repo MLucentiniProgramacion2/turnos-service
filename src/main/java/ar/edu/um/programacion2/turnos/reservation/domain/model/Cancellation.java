@@ -11,4 +11,10 @@ public record Cancellation(String reason, Instant cancelledAt) {
         Texts.optionalText(reason, "el motivo de la cancelación", MAX_REASON_LENGTH);
         Objects.requireNonNull(cancelledAt, "Falta el instante de cancelación");
     }
+
+    /** Sin el motivo: lo escribe el usuario (CU-10) y va a la cátedra, no al log. */
+    @Override
+    public String toString() {
+        return "Cancellation[reason=" + (reason == null ? "null" : "***") + ", cancelledAt=" + cancelledAt + "]";
+    }
 }

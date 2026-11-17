@@ -432,6 +432,18 @@ public class ReservationProcess {
         return now.isBefore(hold.expiresAt()) ? PhoneSubmissionCheck.ALLOWED : PhoneSubmissionCheck.DEADLINE_PASSED;
     }
 
+    /**
+     * Si el proceso se puede cancelar (CU-10): solo una reserva {@code CONFIRMED}. Una ya {@code CANCELLED} no se vuelve a
+     * pedir (la cancelación es idempotente, 4a); cualquier otro estado no se cancela (4b).
+     */
+    public CancellationCheck canCancel() {
+        return switch (status) {
+            case CONFIRMED -> CancellationCheck.ALLOWED;
+            case CANCELLED -> CancellationCheck.ALREADY_CANCELLED;
+            default -> CancellationCheck.NOT_CANCELLABLE;
+        };
+    }
+
     // ---------------------------------------------------------------------------------------------------------------
     // Lectura
     // ---------------------------------------------------------------------------------------------------------------

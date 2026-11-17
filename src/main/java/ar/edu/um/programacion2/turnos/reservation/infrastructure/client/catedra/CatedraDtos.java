@@ -41,6 +41,12 @@ final class CatedraDtos {
         String cancellationReason
     ) {}
 
+    /** Cuerpo de la cancelación (contrato §12): opcional; si no hay motivo, no se manda cuerpo. */
+    record CancelRequest(String reason) {}
+
+    /** {@code 200} de la cancelación (contrato §12). */
+    record CancelResponse(Long reservationId, String reservationProcessId, String status, String cancelledAt) {}
+
     /** De un {@code problem+json} solo interesa el {@code code}: nunca se decide por {@code detail} (contrato §13). */
     record Problem(String code) {}
 }

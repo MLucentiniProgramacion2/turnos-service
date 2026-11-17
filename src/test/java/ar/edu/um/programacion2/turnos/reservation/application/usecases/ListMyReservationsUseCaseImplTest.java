@@ -13,6 +13,7 @@ import static ar.edu.um.programacion2.turnos.reservation.domain.model.Reservatio
 import static ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessStatus.WAITING_FOR_PHONE_REQUEST;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraCancellation;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraReservation;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraReservationList;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraReservationStatus;
@@ -87,6 +88,11 @@ class ListMyReservationsUseCaseImplTest {
                 throw falla;
             }
             return respuesta;
+        }
+
+        @Override
+        public CatedraCancellation cancel(String reservationProcessId, String reason) {
+            throw new AssertionError("CU-09 nunca cancela");
         }
     }
 

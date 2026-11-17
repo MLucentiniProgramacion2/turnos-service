@@ -1,5 +1,6 @@
 package ar.edu.um.programacion2.turnos.reservation.domain.ports.out;
 
+import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraCancellation;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CatedraReservationList;
 import java.time.LocalDate;
 
@@ -22,4 +23,14 @@ public interface AppointmentGateway {
      * @param to fecha máxima del turno, incluida
      */
     CatedraReservationList listReservations(String externalPatientId, LocalDate from, LocalDate to);
+
+    /**
+     * {@code POST /api/appointments/{reservationProcessId}/cancel} (contrato §12), con el motivo si hay uno y sin cuerpo si
+     * no. Es una operación <strong>con efectos</strong>: un solo intento, y una falla después de conectar es
+     * {@link CatedraOutcomeUnknownException} (contrato §18.4), igual que el hold. Cancelar algo ya cancelado devuelve su
+     * estado: repetir es seguro.
+     *
+     * @param reason el motivo del usuario, hasta 500 caracteres, o {@code null}
+     */
+    CatedraCancellation cancel(String reservationProcessId, String reason);
 }

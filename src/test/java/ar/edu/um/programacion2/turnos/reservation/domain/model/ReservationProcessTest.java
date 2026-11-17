@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class ReservationProcessTest {
@@ -339,5 +340,20 @@ class ReservationProcessTest {
         assertThat(proceso.cancelledByReconciliation(CANCELACION, null, AHORA)).isEqualTo(new Applied(ReservationProcessStatus.PHONE_SUBMITTED, ReservationProcessStatus.CANCELLED));
         assertThat(proceso.getConfirmation()).isEmpty();
         assertThat(proceso.getCancellation()).contains(CANCELACION);
+    }
+
+    /** CU-10 4, 4a y 4b: solo CONFIRMED se cancela; CANCELLED responde sin llamar; el resto no se cancela. */
+    @ParameterizedTest
+    @EnumSource(ReservationProcessStatus.class)
+    void siSePuedeCancelarPorEstado(ReservationProcessStatus estado) {
+        ReservationProcess proceso = ReservationProcessMatrix.procesoEn(estado, 42);
+        CancellationCheck esperado = switch (estado) {
+            case CONFIRMED -> CancellationCheck.ALLOWED;
+            case CANCELLED -> CancellationCheck.ALREADY_CANCELLED;
+            default -> CancellationCheck.NOT_CANCELLABLE;
+        };
+
+        assertThat(proceso.canCancel()).isEqualTo(esperado);
+        assertThat(proceso.getStatus()).isEqualTo(estado);
     }
 }

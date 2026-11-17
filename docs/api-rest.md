@@ -11,6 +11,7 @@ Cada sección se completa con el issue que implementa su caso de uso.
 | `POST /api/reservation-processes/{id}/phone` | [CU-06](use-cases/CU-06-informar-telefono.md) | implementado (#12) |
 | `GET /api/reservation-processes/{id}` | [CU-08](use-cases/CU-08-consultar-estado-de-un-proceso.md) | implementado (#14) |
 | `GET /api/reservation-processes` | [CU-09](use-cases/CU-09-consultar-mis-reservas.md) | implementado (#14) |
+| `POST /api/reservation-processes/{id}/cancel` | [CU-10](use-cases/CU-10-cancelar-reserva-propia.md) | implementado (#14) |
 
 ## Convenciones
 
@@ -108,7 +109,7 @@ Más los comunes: `500`, `502` y los dos `503`.
 
 ## El proceso de reserva
 
-Lo devuelven CU-04, CU-06 y CU-08, y es cada elemento de la lista de CU-09. Los bloques que no corresponden al estado no
+Lo devuelven CU-04, CU-06, CU-08 y CU-10, y es cada elemento de la lista de CU-09. Los bloques que no corresponden al estado no
 se mandan.
 
 ```json
@@ -295,3 +296,33 @@ Authorization: Bearer <JWT de usuario>
 | 400 | `VALIDATION_ERROR` | `status` con un valor que no es un estado, o `page` o `size` fuera de rango. No se repite el valor |
 
 La cátedra caída **no** es un error de este endpoint: es `200` con `catedraUpToDate: false`.
+
+## CU-10: cancelar una reserva propia
+
+```http
+POST /api/reservation-processes/{id}/cancel
+Authorization: Bearer <JWT de usuario>
+Content-Type: application/json
+
+{ "reason": "Me surgió un viaje" }
+```
+
+El cuerpo es **opcional**, y `reason` también (hasta 500 caracteres, el máximo de la cátedra). Sin motivo, se puede
+mandar sin cuerpo, con `{}` o con `reason` en blanco. El motivo se guarda y se le manda a la cátedra; nunca se escribe
+en el log.
+
+`200 OK` + proceso en `CANCELLED`, con `cancellation.reason` y `cancellation.cancelledAt` (cuándo la canceló la
+cátedra). **Cancelar es idempotente:** si el proceso ya estaba `CANCELLED`, responde `200` con el estado actual sin
+volver a pedirle nada a la cátedra. Si `AppointmentCancelled` llegó por Kafka antes de guardar, también `200`, con los
+datos del evento.
+
+| HTTP | `code` | Cuándo | Qué quedó |
+| --- | --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `reason` tiene más de 500 caracteres. No se repite el valor | nada |
+| 400 | (sin `code`) | `{id}` no es un UUID | nada |
+| 404 | `RESERVATION_PROCESS_NOT_FOUND` | El proceso no existe **o es de otro usuario** (también para un administrador) | nada |
+| 409 | `RESERVATION_NOT_CANCELLABLE` | Solo se cancelan reservas confirmadas. Trae `status`, **el estado local** del proceso. Si viene `CONFIRMED`, es que la cátedra dijo que no se puede cancelar: hay una discrepancia, que corrige "Mis reservas" (CU-09) o la reconciliación (CU-11) | nada |
+| 503 | `CATEDRA_UNAVAILABLE` | No se pudo conectar con la cátedra: **seguro que no se canceló**. Se puede reintentar | sigue `CONFIRMED` |
+| 503 | `CANCELLATION_OUTCOME_UNKNOWN` | La cátedra no respondió después de recibir el pedido: **puede que se haya cancelado**. Conviene revisar "Mis reservas", o reintentar: es seguro, porque cancelar algo ya cancelado devuelve su estado | sigue `CONFIRMED` localmente; si se canceló en la cátedra, converge por el evento o por CU-09 |
+| 502 | `UPSTREAM_INVALID_RESPONSE` | La cátedra respondió fuera de su contrato | sigue `CONFIRMED` |
+| 500 | `INTERNAL_ERROR` | La cátedra rechazó la cancelación por un error propio (la reserva no existe en la cátedra, es de otra cuenta técnica), o se canceló y no se pudo guardar | sigue `CONFIRMED` hasta que converja |

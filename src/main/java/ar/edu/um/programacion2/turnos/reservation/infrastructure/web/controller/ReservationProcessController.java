@@ -1,6 +1,8 @@
 package ar.edu.um.programacion2.turnos.reservation.infrastructure.web.controller;
 
 import ar.edu.um.programacion2.turnos.reservation.application.service.ReservationService;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.CancelReservationCommand;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.CancelReservationResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservations;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservationsQuery;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.PageQuery;
@@ -10,6 +12,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationR
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneCommand;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ResultPage;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneResult;
+import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.CancelReservationRequest;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.MyReservationsParams;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.ReservationProcessPageResponse;
 import ar.edu.um.programacion2.turnos.reservation.infrastructure.web.dto.ReservationProcessResponse;
@@ -31,8 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Adaptador de entrada REST de los procesos de reserva: {@code POST /api/reservation-processes} (CU-04),
- * {@code POST /api/reservation-processes/{id}/phone} (CU-06), {@code GET /api/reservation-processes/{id}} (CU-08) y
- * {@code GET /api/reservation-processes} (CU-09).
+ * {@code POST /api/reservation-processes/{id}/phone} (CU-06), {@code GET /api/reservation-processes/{id}} (CU-08),
+ * {@code GET /api/reservation-processes} (CU-09) y {@code POST /api/reservation-processes/{id}/cancel} (CU-10).
  * <p>
  * Lo protege la regla de {@code /api/**}: {@code 401} sin token o con uno inválido, {@code 403} con el token técnico de
  * servicio. <strong>La identidad sale del token</strong> ({@code userId} y login, DPT-21): el cuerpo no trae ningún dato
@@ -132,5 +135,28 @@ public class ReservationProcessController {
             result.catedraUpToDate(),
             page.items().stream().map(mapper::toResponse).toList()
         );
+    }
+
+    /**
+     * CU-10. El cuerpo es opcional (sin cuerpo o sin {@code reason}, se cancela sin motivo). El proceso se busca con el
+     * {@code userId} del token: uno ajeno responde {@code 404}, igual que uno que no existe, también para un administrador.
+     */
+    @PostMapping("/{id}/cancel")
+    public ReservationProcessResponse cancelReservation(
+        @PathVariable("id") UUID id,
+        @Valid @RequestBody(required = false) CancelReservationRequest request
+    ) {
+        long userId = SecurityUtils.getCurrentUserId().orElseThrow(ReservationErrorResponses::userNotFound);
+        String reason = request == null ? null : request.reason();
+        CancelReservationResult result = reservationService.cancelReservation(new CancelReservationCommand(userId, new ReservationProcessId(id), reason));
+        return switch (result) {
+            case CancelReservationResult.Cancelled cancelled -> mapper.toResponse(cancelled.process());
+            case CancelReservationResult.NotFound notFound -> throw ReservationErrorResponses.processNotFound();
+            case CancelReservationResult.NotCancellable notCancellable -> throw ReservationErrorResponses.reservationNotCancellable(notCancellable.status());
+            case CancelReservationResult.CatedraUnavailable unavailable -> throw ReservationErrorResponses.catedraUnavailable();
+            case CancelReservationResult.OutcomeUnknown unknown -> throw ReservationErrorResponses.cancellationOutcomeUnknown();
+            case CancelReservationResult.UpstreamInvalidResponse invalid -> throw ReservationErrorResponses.upstreamInvalidResponse();
+            case CancelReservationResult.InternalError error -> throw ReservationErrorResponses.internalError();
+        };
     }
 }

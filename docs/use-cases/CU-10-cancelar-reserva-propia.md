@@ -62,6 +62,30 @@ El usuario elige "Cancelar" sobre una reserva confirmada en "Mis reservas" (CU-0
 - **7a. `AppointmentCancelled` llegó antes que el `200`** y el proceso ya está en `CANCELLED`:
   no se modifica y se responde con el estado actual (DPT-05).
 
+## Notas de implementación (issue #14)
+
+Contrato REST en [`api-rest.md`](../api-rest.md#cu-10-cancelar-una-reserva-propia).
+
+- **El estado lo decide el modelo** (`canCancel`: `ALLOWED`, `ALREADY_CANCELLED` o `NOT_CANCELLABLE`); el
+  caso de uso mira la respuesta.
+- **5a con dos `code`:** sin conectar es `503 CATEDRA_UNAVAILABLE` (seguro que no se canceló); después de
+  conectar (timeout, corte, `5xx`, o un `200` que no dice `CANCELLED` para ese proceso) es
+  `503 CANCELLATION_OUTCOME_UNKNOWN` ("puede que se haya cancelado"). Un `200` fuera de contrato es
+  resultado desconocido y no respuesta inválida: la cátedra dijo "éxito" (ADR 0004).
+- **6a** responde `409 RESERVATION_NOT_CANCELLABLE` con el `status` local (`CONFIRMED`) y una advertencia en
+  el log. **6b:** `RESERVATION_NOT_FOUND`, `RESERVATION_OWNER_MISMATCH` u otro rechazo es `500`; la
+  credencial técnica rechazada es `503 CATEDRA_UNAVAILABLE`; una respuesta fuera de contrato, `502`.
+- **El motivo:** se guarda el del usuario (la respuesta de la cátedra no lo devuelve) con el `cancelledAt` de
+  la cátedra. El instante del cambio de estado local es el reloj de turnos. El motivo no aparece en el log
+  ni en el `toString()` del comando ni de la cancelación.
+- **Sin cuerpo si no hay motivo** (medido el 16/11: la cátedra lo acepta).
+- **7a y la carrera con Kafka**, probadas con dos escritores reales en los dos órdenes: el evento procesado
+  mientras la cátedra responde (CU-10 relee y el modelo da `FINAL_STATE`), y el evento guardado entre la
+  relectura y el guardado de CU-10 (pierde por `@Version`, relee y da `FINAL_STATE`). Dos cancelaciones
+  simultáneas del mismo proceso terminan las dos en `200`.
+- **Si la cancelación se aplicó y no se pudo guardar:** `500`, el proceso queda `CONFIRMED` y converge por
+  `AppointmentCancelled` (CU-07) o por CU-09.
+
 ## Postcondiciones
 
 - **De éxito:** la reserva está cancelada en la cátedra y el proceso local está en `CANCELLED`, un

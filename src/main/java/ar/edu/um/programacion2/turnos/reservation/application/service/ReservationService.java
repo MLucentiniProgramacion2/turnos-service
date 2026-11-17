@@ -1,6 +1,8 @@
 package ar.edu.um.programacion2.turnos.reservation.application.service;
 
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityResult;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.CancelReservationCommand;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.CancelReservationResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.EventOutcome;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservations;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.MyReservationsQuery;
@@ -11,6 +13,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationC
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneCommand;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationResult;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.CancelReservationUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetAvailabilityUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetReservationProcessUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandlePhoneRequestedUseCase;
@@ -38,6 +41,7 @@ public class ReservationService {
     private final SubmitPhoneUseCase submitPhoneUseCase;
     private final GetReservationProcessUseCase getReservationProcessUseCase;
     private final ListMyReservationsUseCase listMyReservationsUseCase;
+    private final CancelReservationUseCase cancelReservationUseCase;
 
     /** CU-03. */
     public AvailabilityResult getAvailability(long professionalId, LocalDate from, LocalDate to, String requestedBy) {
@@ -72,5 +76,10 @@ public class ReservationService {
     /** CU-09. */
     public MyReservations listMyReservations(MyReservationsQuery query) {
         return listMyReservationsUseCase.list(query);
+    }
+
+    /** CU-10. */
+    public CancelReservationResult cancelReservation(CancelReservationCommand command) {
+        return cancelReservationUseCase.cancel(command);
     }
 }
