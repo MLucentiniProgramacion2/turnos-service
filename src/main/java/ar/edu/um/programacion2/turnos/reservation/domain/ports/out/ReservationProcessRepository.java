@@ -66,4 +66,16 @@ public interface ReservationProcessRepository {
      * tope o el plazo, los que quedan son los más recientes. Hay a lo sumo uno por usuario (DPT-17).
      */
     List<ReservationProcess> findIntermediates();
+
+    /**
+     * Una página de los procesos de todos los usuarios, o de uno (CU-12), del último cambio de estado más nuevo al más viejo
+     * y el {@code id} para desempatar: para diagnosticar, lo último que se movió primero.
+     *
+     * @param userId el dueño, o {@code null} para todos
+     * @param statuses los estados pedidos; vacío es "todos"
+     */
+    ResultPage<ReservationProcess> findPage(Long userId, Set<ReservationProcessStatus> statuses, PageQuery page);
+
+    /** El proceso con ese identificador, <strong>de cualquier dueño</strong>: solo para CU-12, que es de administrador. */
+    Optional<ReservationProcess> findById(ReservationProcessId id);
 }

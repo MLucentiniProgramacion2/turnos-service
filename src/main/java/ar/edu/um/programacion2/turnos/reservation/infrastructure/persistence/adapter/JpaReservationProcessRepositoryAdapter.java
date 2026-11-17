@@ -123,6 +123,24 @@ public class JpaReservationProcessRepositoryAdapter implements ReservationProces
         return new ResultPage<>(found.getContent().stream().map(mapper::toDomain).toList(), page.number(), page.size(), found.getTotalElements());
     }
 
+    /** Orden del listado de administrador: lo último que se movió primero; el {@code id} desempata. */
+    static final Sort ADMIN_PAGE_ORDER = Sort.by(Sort.Order.desc("statusChangedAt"), Sort.Order.asc("id"));
+
+    @Override
+    public ResultPage<ReservationProcess> findPage(Long userId, Set<ReservationProcessStatus> statuses, PageQuery page) {
+        Set<ReservationProcessStatus> filter = statuses.isEmpty() ? EnumSet.allOf(ReservationProcessStatus.class) : statuses;
+        PageRequest request = PageRequest.of(page.number(), page.size(), ADMIN_PAGE_ORDER);
+        Page<ReservationProcessEntity> found = userId == null
+            ? jpaRepository.findByStatusIn(filter, request)
+            : jpaRepository.findByUserIdAndStatusIn(userId, filter, request);
+        return new ResultPage<>(found.getContent().stream().map(mapper::toDomain).toList(), page.number(), page.size(), found.getTotalElements());
+    }
+
+    @Override
+    public Optional<ReservationProcess> findById(ReservationProcessId id) {
+        return jpaRepository.findById(id.value()).map(mapper::toDomain);
+    }
+
     @Override
     public List<ReservationProcess> findIntermediates() {
         return jpaRepository.findByStatusInOrderByStatusChangedAtAscIdAsc(INTERMEDIATE).stream().map(mapper::toDomain).toList();

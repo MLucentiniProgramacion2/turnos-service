@@ -12,6 +12,7 @@ Cada sección se completa con el issue que implementa su caso de uso.
 | `GET /api/reservation-processes/{id}` | [CU-08](use-cases/CU-08-consultar-estado-de-un-proceso.md) | implementado (#14) |
 | `GET /api/reservation-processes` | [CU-09](use-cases/CU-09-consultar-mis-reservas.md) | implementado (#14) |
 | `POST /api/reservation-processes/{id}/cancel` | [CU-10](use-cases/CU-10-cancelar-reserva-propia.md) | implementado (#14) |
+| `GET /api/admin/reservation-processes` y `GET /api/admin/reservation-processes/{id}` | [CU-12](use-cases/CU-12-consultar-procesos-de-todos-los-usuarios.md) | implementado (#14), solo `ROLE_ADMIN` |
 
 ## Convenciones
 
@@ -340,3 +341,64 @@ datos del evento.
 | 503 | `CANCELLATION_OUTCOME_UNKNOWN` | La cátedra no respondió después de recibir el pedido: **puede que se haya cancelado**. Conviene revisar "Mis reservas", o reintentar: es seguro, porque cancelar algo ya cancelado devuelve su estado | sigue `CONFIRMED` localmente; si se canceló en la cátedra, converge por el evento o por CU-09 |
 | 502 | `UPSTREAM_INVALID_RESPONSE` | La cátedra respondió fuera de su contrato | sigue `CONFIRMED` |
 | 500 | `INTERNAL_ERROR` | La cátedra rechazó la cancelación por un error propio (la reserva no existe en la cátedra, es de otra cuenta técnica), o se canceló y no se pudo guardar | sigue `CONFIRMED` hasta que converja |
+
+## CU-12: consulta administrativa (solo `ROLE_ADMIN`)
+
+```http
+GET /api/admin/reservation-processes?userId=1101&status=PHONE_REQUESTED,HOLD_CREATED&page=0&size=20
+GET /api/admin/reservation-processes/{id}
+Authorization: Bearer <JWT de un usuario con ROLE_ADMIN>
+```
+
+**Solo lectura** (DPT-14) y **solo datos locales** (DPT-23): no consulta a la cátedra ni modifica nada; no hay
+ningún endpoint de administrador que cancele o cambie un proceso. Sirve para diagnosticar, por ejemplo, un
+proceso trabado.
+
+| Parámetro | Obligatorio | Regla |
+| --- | --- | --- |
+| `userId` | no | El `id` interno del dueño (DPT-21), positivo. Sin él, de todos los usuarios. Es el único lugar donde se recibe un id de usuario: es un filtro de un administrador, no una identidad |
+| `status` | no | Uno o varios estados, como en CU-09 |
+| `page`, `size` | no | `page` desde 0; `size` de 1 a 100, por defecto 20 |
+
+Orden: el último cambio de estado más nuevo primero (lo último que se movió), y el `id` para desempatar. La
+respuesta tiene el formato de página de CU-09 (sin `catedraUpToDate`), con `processes` de este formato:
+
+```json
+{
+  "id": "5f0c1c5e-3d0e-4a53-9f43-0b1a8c0b7f11",
+  "owner": { "userId": 1101, "loginAtStart": "ana.perez" },
+  "status": "PHONE_REJECTED",
+  "createdAt": "2026-12-14T12:30:00Z",
+  "statusChangedAt": "2026-12-14T12:36:00Z",
+  "expiresAt": "2026-12-14T12:42:00Z",
+  "appointment": { "professionalId": 202, "date": "2026-12-15", "startTime": "10:00:00", "endTime": "10:30:00" },
+  "professional": { "firstName": "Ana", "lastName": "Gomez", "categoryName": "Clinica medica", "slotDurationMinutes": 30 },
+  "integration": {
+    "holdId": "hold-6c0c2f41",
+    "reservationProcessId": "process-a92b47d0",
+    "requestEventId": "request-event-8a31",
+    "lastSubmittedEventId": "phone-submitted-b91e"
+  },
+  "rejection": { "reason": "INVALID_PHONE_NUMBER", "message": "El telefono ingresado no es valido." }
+}
+```
+
+- `owner.loginAtStart` es el login que tenía el usuario al iniciar la reserva: un admin lo puede cambiar
+  después (el actual está en `/api/admin/users`). Lo que identifica al dueño es `userId`.
+- `integration` trae los identificadores para cruzar con la cátedra y con Kafka: `holdId`, `reservationProcessId`,
+  `reservationId` (si se confirmó), `requestEventId` (el del pedido de teléfono) y `lastSubmittedEventId` (el
+  último teléfono enviado).
+- `cancellation` trae `cancelledAt` y `withReason` (si el usuario dejó un motivo), **sin el texto**.
+- **No trae** el teléfono ni los nombres del paciente ni el texto del motivo de cancelación: para
+  diagnosticar no hacen falta, y el enunciado pide no exponer datos personales en respuestas que no los
+  necesitan (§9).
+
+| HTTP | `code` | Cuándo |
+| --- | --- | --- |
+| 400 | `VALIDATION_ERROR` | `userId` no positivo o no numérico, un `status` desconocido, `page` o `size` fuera de rango. No se repite el valor |
+| 401 | (sin cuerpo) | Sin token, o inválido o vencido |
+| 403 | (sin cuerpo) | Un usuario sin `ROLE_ADMIN`, o el token técnico de servicio |
+| 404 | `RESERVATION_PROCESS_NOT_FOUND` | El detalle de un proceso que no existe |
+
+Un administrador que usa los endpoints comunes (`/api/reservation-processes...`) ve y opera **solo sus
+propios procesos**, como cualquier usuario.

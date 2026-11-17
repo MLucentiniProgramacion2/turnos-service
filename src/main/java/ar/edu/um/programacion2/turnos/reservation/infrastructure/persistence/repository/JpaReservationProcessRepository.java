@@ -31,6 +31,9 @@ public interface JpaReservationProcessRepository extends JpaRepository<Reservati
      */
     List<ReservationProcessEntity> findByStatusInOrderByStatusChangedAtAscIdAsc(Collection<ReservationProcessStatus> statuses);
 
+    /** Consulta derivada con paginación (CU-12 sin filtro de usuario): los procesos en esos estados, de todos. */
+    Page<ReservationProcessEntity> findByStatusIn(Collection<ReservationProcessStatus> statuses, Pageable pageable);
+
     /** Consulta derivada: el proceso con ese ID de la cátedra (columna única). */
     Optional<ReservationProcessEntity> findByReservationProcessId(String reservationProcessId);
 

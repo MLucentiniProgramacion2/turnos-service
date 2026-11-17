@@ -138,6 +138,26 @@ class InMemoryReservationProcessRepository implements ReservationProcessReposito
     }
 
     @Override
+    public ResultPage<ReservationProcess> findPage(Long userId, Set<ReservationProcessStatus> statuses, PageQuery page) {
+        transactions.requireActive();
+        List<ReservationProcess> all = rows
+            .values()
+            .stream()
+            .filter(row -> userId == null || row.getOwner().userId() == userId)
+            .filter(row -> statuses.isEmpty() || statuses.contains(row.getStatus()))
+            .sorted(Comparator.comparing(ReservationProcess::getStatusChangedAt).reversed().thenComparing(row -> row.getId().value()))
+            .toList();
+        List<ReservationProcess> items = all.stream().skip((long) page.number() * page.size()).limit(page.size()).map(this::copy).toList();
+        return new ResultPage<>(items, page.number(), page.size(), all.size());
+    }
+
+    @Override
+    public Optional<ReservationProcess> findById(ReservationProcessId id) {
+        transactions.requireActive();
+        return Optional.ofNullable(rows.get(id)).map(this::copy);
+    }
+
+    @Override
     public List<ReservationProcess> findIntermediates() {
         transactions.requireActive();
         return rows

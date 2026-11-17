@@ -1,5 +1,6 @@
 package ar.edu.um.programacion2.turnos.reservation.application.service;
 
+import ar.edu.um.programacion2.turnos.reservation.domain.model.AdminProcessQuery;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.AvailabilityResult;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CancelReservationCommand;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.CancelReservationResult;
@@ -10,6 +11,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProces
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReconciliationReport;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationEvent;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.ReservationProcessId;
+import ar.edu.um.programacion2.turnos.reservation.domain.model.ResultPage;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.StartReservationCommand;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneCommand;
 import ar.edu.um.programacion2.turnos.reservation.domain.model.SubmitPhoneResult;
@@ -20,6 +22,7 @@ import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.GetReservation
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandlePhoneRequestedUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.HandleProcessOutcomeUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.ListMyReservationsUseCase;
+import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.QueryAllReservationProcessesUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.ReconcilePendingProcessesUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.StartReservationUseCase;
 import ar.edu.um.programacion2.turnos.reservation.domain.ports.in.SubmitPhoneUseCase;
@@ -45,6 +48,7 @@ public class ReservationService {
     private final ListMyReservationsUseCase listMyReservationsUseCase;
     private final CancelReservationUseCase cancelReservationUseCase;
     private final ReconcilePendingProcessesUseCase reconcilePendingProcessesUseCase;
+    private final QueryAllReservationProcessesUseCase queryAllReservationProcessesUseCase;
 
     /** CU-03. */
     public AvailabilityResult getAvailability(long professionalId, LocalDate from, LocalDate to, String requestedBy) {
@@ -89,5 +93,15 @@ public class ReservationService {
     /** CU-11. */
     public ReconciliationReport reconcilePendingProcesses() {
         return reconcilePendingProcessesUseCase.reconcile();
+    }
+
+    /** CU-12, el listado. */
+    public ResultPage<ReservationProcess> listAllReservationProcesses(AdminProcessQuery query) {
+        return queryAllReservationProcessesUseCase.list(query);
+    }
+
+    /** CU-12, el detalle. */
+    public Optional<ReservationProcess> findAnyReservationProcess(ReservationProcessId id) {
+        return queryAllReservationProcessesUseCase.find(id);
     }
 }
