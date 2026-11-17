@@ -10,7 +10,7 @@
 ## Contexto
 
 Turnos llama a la API REST de la cátedra para las ocupaciones (contrato §8), para crear y confirmar
-holds (§9 y §10) y, más adelante, para listar y cancelar reservas (§11 y §12). El catálogo ya eligió
+holds (§9 y §10) y para listar y cancelar reservas (§11 y §12, desde el #14). El catálogo ya eligió
 cómo hacer esos pedidos en su ADR 0004, para el snapshot. **Esta decisión adopta la suya y explica
 solo lo que cambia.** Turnos tiene dos diferencias:
 
@@ -89,7 +89,7 @@ conectar es "resultado desconocido". `HttpConnectTimeoutException` es subclase d
 Medido: si el servidor cierra la conexión sin responder, el cliente HTTP del JDK **repite el `GET`
 una vez por su cuenta** (llegan dos pedidos). Con un `POST` no lo hace (llega uno). No se desactiva:
 
-- solo afecta a consultas sin efectos (las ocupaciones, y el listado de reservas más adelante);
+- solo afecta a consultas sin efectos (las ocupaciones y el listado de reservas);
 - desactivarlo exige una propiedad de sistema que vale para toda la JVM.
 
 Lo fija un test (`CatedraOccupancyClientTest`), para que un cambio de JDK se note. La consecuencia

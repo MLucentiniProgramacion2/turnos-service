@@ -157,7 +157,7 @@ cancelación (`varchar(500)`).
 | Mal formado o tipo desconocido | WARN | se descarta sin reintento |
 | Un dato degradado | WARN | se aplica igual |
 | Falla inesperada, cada intento | WARN | reintentos observables (§18.4) |
-| Reintentos agotados | ERROR | el evento queda sin aplicar hasta CU-11 |
+| Reintentos agotados | ERROR | el evento queda sin aplicar; el proceso lo cierra CU-11 |
 
 ## Decisión: el productor
 
@@ -299,8 +299,9 @@ topic real y pide `partitionsFor` después de confirmar que existe; no publica.
 
 - Sin las tres variables, la aplicación no arranca. Con el broker caído o sin ZeroTier, arranca igual
   (enunciado §8): el listener reintenta conectarse y las operaciones que no dependen de Kafka siguen.
-- Un evento que falla 4 veces queda sin aplicar hasta que exista CU-11. Mientras tanto, el usuario
-  puede quedar con un proceso intermedio (ver la explicación del issue #12 para destrabarlo).
+- Un evento que falla 4 veces queda sin aplicar, y el proceso queda en su estado hasta que lo cierra la
+  reconciliación (CU-11, desde el issue #14) preguntándole a la cátedra, pasado `expiresAt` + 1 minuto
+  (ver [`reservas.md`](../reservas.md#6-recuperación)).
 - Los logs de Kafka pueden nombrar el broker (`Connection to node...`): `logback-spring.xml` deja
   `org.apache` en WARN. Es un host, no una credencial.
 
