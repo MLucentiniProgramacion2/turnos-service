@@ -19,8 +19,11 @@ hexagonal.
 
 ## Requisitos
 
-- Java 25 (Temurin), por ejemplo con SDKMAN: `sdk install java 25.0.4-tem`
-- Docker con Docker Compose (para la base y para los tests con Testcontainers)
+- Docker con Docker Compose (probado con Engine 29.8 y Compose v5.5; el Compose usa `env_file` con
+  `format: raw`, que las versiones viejas no entienden)
+- Java 25 (Temurin) solo para desarrollar y correr los tests, por ejemplo con SDKMAN:
+  `sdk install java 25.0.4-tem`. Para levantar el servicio con Docker Compose no hace falta: la
+  imagen se compila adentro de Docker.
 
 No hace falta instalar Maven: se usa el wrapper `./mvnw`.
 
@@ -59,12 +62,38 @@ Opcionales, con su valor por defecto:
 | `RESERVATION_TIME_ZONE` | `America/Argentina/Mendoza` | Zona horaria de atención: "hoy" y "ahora" para ofrecer y reservar turnos (DPT-10). Una zona que no existe impide arrancar |
 | `RESERVATION_BOOKING_HORIZON_DAYS` | `60` | Hasta cuántos días adelante se ofrecen turnos, de 1 a 365 |
 | `RESERVATION_RECONCILIATION_INTERVAL` | `60s` | Cada cuánto corre la reconciliación de procesos pendientes (CU-11), desde que termina la anterior; la primera corre al arrancar. De `10s` a `10m` |
+| `TURNOS_APP_BIND` | `127.0.0.1` | Solo Docker Compose: interfaz del host donde se publica el `8080`. Para un teléfono físico, la IP de la red local; nunca `0.0.0.0` |
 
 ## Uso
 
+### Con Docker Compose (base y aplicación)
+
 ```bash
-docker compose up -d   # levanta la base turnos-db (PostgreSQL 18, puerto 5434 del host)
-./mvnw                 # corre la app en el perfil dev, en http://localhost:8080
+docker compose up -d --build --wait   # construye la imagen y levanta turnos-db y turnos-app (perfil prod)
+docker compose logs -f turnos-app     # los logs de la aplicación (Ctrl+C no la detiene)
+docker compose stop                   # apaga en orden; el contenedor sale con 143 (SIGTERM)
+```
+
+- `--build` reconstruye la imagen ([`Dockerfile`](Dockerfile), en dos etapas: compila con el
+  wrapper y el perfil `prod` y corre en un JRE 25). Sin `--build`, el Compose usa la imagen que ya
+  está (`turnos-service:local`). La primera vez tarda unos 2 minutos (baja las dependencias de Maven);
+  después, unos 20 segundos.
+- El contenedor usa el mismo `.env`. El [`docker-compose.yml`](docker-compose.yml) pisa la base
+  (`turnos-db:5432`), el catálogo (`host.docker.internal:8081`) y el perfil (`prod`).
+- `turnos-app` queda `healthy` cuando responde `/management/health/readiness` (unos 20 s). La
+  cátedra solo se alcanza por ZeroTier, también desde el contenedor.
+- El catálogo es otro Compose (o `./mvnw`) y se alcanza por el host: levantarlo antes, con su puerto
+  publicado también en la IP del gateway de Docker (lo hace su Compose). Apagar en el orden inverso:
+  primero turnos y después el catálogo.
+- `docker compose stop` espera hasta 90 s el cierre ordenado. **Nunca `docker compose down -v`**:
+  borra el volumen `turnos-service_turnos-db-data`, con los usuarios y las reservas.
+
+### Para desarrollar (base en Docker, aplicación con `./mvnw`)
+
+```bash
+docker compose stop turnos-app      # si estaba corriendo: usa el mismo puerto 8080
+docker compose up -d turnos-db      # solo la base (PostgreSQL 18, puerto 5434 del host)
+./mvnw                              # la app en el perfil dev, en http://localhost:8080
 ```
 
 Al arrancar, Liquibase aplica las migraciones. Para comprobar que está en marcha:
@@ -231,8 +260,8 @@ en cada push a `develop` (workflow [`ci.yml`](.github/workflows/ci.yml)). Si fal
 
 ## Notas
 
-- `src/main/docker/` es lo que genera JHipster y todavía no se usa: la única base del servicio es la
-  del `docker-compose.yml` de la raíz. Sumar la imagen del servicio al Compose es de la etapa 4.
+- El Compose del servicio es el `docker-compose.yml` de la raíz. Lo que queda en `src/main/docker/`
+  (monitoreo, Sonar, JHipster Control Center) es lo que generó JHipster y no se usa.
 - La clave JWT de `src/main/docker/jhipster-control-center.yml` (y de `.yo-rc.json` y del perfil de
   test) es la **clave de test, pública a propósito**: no sirve para firmar ni validar tokens reales.
 - Decisiones de arquitectura en [`docs/adr/`](docs/adr) y casos de uso en
